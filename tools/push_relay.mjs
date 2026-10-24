@@ -3,7 +3,7 @@
 import {Firestore,Timestamp,FieldValue} from '@google-cloud/firestore';
 import {GoogleAuth,OAuth2Client} from 'google-auth-library';
 import webpush from 'web-push';
-import {readFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 
 const projectId = 'tongyeok-talk-lab-20261024';
@@ -54,7 +54,10 @@ async function deliver(room, message) {
     }
   }
 }
+let ready = false;
+function health(){if(process.env.TONGYEOK_HEALTH_FILE)writeFileSync(process.env.TONGYEOK_HEALTH_FILE,JSON.stringify({pid:process.pid,ready,success,failures,checkedAt:new Date().toISOString()}));}
 const stop = db.collection('conversations').onSnapshot(snapshot => {
+  if(!ready){ready=true;console.log(JSON.stringify({event:'relay_connected',rooms:snapshot.size}));health();}
   for (const change of snapshot.docChanges()) {
     const room = change.doc;
     if (change.type === 'removed') { watching.get(room.id)?.(); watching.delete(room.id); continue; }
@@ -64,6 +67,7 @@ const stop = db.collection('conversations').onSnapshot(snapshot => {
     }, error => console.error(JSON.stringify({event:'message_listener_failed',code:error.code}))));
   }
 }, error => { console.error(JSON.stringify({event:'room_listener_failed',code:error.code})); process.exitCode=1; });
+const heartbeat=setInterval(health,30000);
 console.log(JSON.stringify({event:'relay_started',projectId,startedAt:new Date().toISOString(),mode:'local-PC trial; no cloud billing'}));
-function shutdown(){stop();for(const unsubscribe of watching.values())unsubscribe();db.terminate().finally(()=>process.exit());}
+function shutdown(){clearInterval(heartbeat);stop();for(const unsubscribe of watching.values())unsubscribe();db.terminate().finally(()=>process.exit());}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
