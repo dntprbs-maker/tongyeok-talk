@@ -1,7 +1,7 @@
 import {test,before,after} from 'node:test';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {doc,setDoc,getDoc,getDocs,collection,writeBatch,serverTimestamp,updateDoc} from 'firebase/firestore';
+import {doc,setDoc,getDoc,getDocs,collection,writeBatch,serverTimestamp,updateDoc,Timestamp,query,where,orderBy,startAfter} from 'firebase/firestore';
 let env,a,b;
 before(async()=>{
  env=await initializeTestEnvironment({projectId:`demo-tt-phone-${Date.now().toString(36)}`,
@@ -33,4 +33,34 @@ test('SMS verification cannot be forged and only two profile languages are accep
  await assertFails(updateDoc(doc(a,'users/alpha/private/contact'),{phoneVerified:true}));
  await assertFails(updateDoc(doc(a,'users/alpha'),{preferredLanguage:'English'}));
  await assertSucceeds(updateDoc(doc(a,'users/alpha'),{preferredLanguage:'Mongolian'}));
+});
+
+test('unread receipts are private, monotonic, and count only unseen incoming messages',async()=>{
+ const room=doc(a,'conversations/unread');
+ await setDoc(room,{participants:['alpha','beta'],lastMessage:'',timestamp:serverTimestamp()});
+ const send=async(db,id,sender,text)=>{const batch=writeBatch(db);batch.set(doc(db,'conversations/unread/messages/'+id),{senderId:sender,originalText:text,translations:{},sourceLang:'ko',timestamp:serverTimestamp()});batch.update(doc(db,'conversations/unread'),{lastMessage:text,timestamp:serverTimestamp()});await batch.commit();};
+ await send(a,'one','alpha','first'); await send(b,'own','beta','own'); await send(a,'two','alpha','second');
+ const list=collection(b,'conversations/unread/messages');
+ let pending=await getDocs(query(list,orderBy('timestamp')));
+ if(pending.docs.filter(d=>d.data().senderId!=='beta').length!==2)throw Error('incoming count mismatch');
+ const through=pending.docs.at(-1).data().timestamp,receipt=doc(b,'conversations/unread/reads/beta');
+ await assertSucceeds(setDoc(receipt,{readThrough:through}));
+ await assertFails(getDoc(doc(a,'conversations/unread/reads/beta')));
+ await assertFails(setDoc(doc(a,'conversations/unread/reads/beta'),{readThrough:through}));
+ await assertFails(setDoc(receipt,{readThrough:Timestamp.fromMillis(1)}));
+ await assertFails(setDoc(receipt,{readThrough:Timestamp.fromMillis(Date.now()+86400000)}));
+ await send(a,'three','alpha','new after reading');
+ pending=await getDocs(query(list,orderBy('timestamp'),startAfter(through)));
+ if(pending.docs.filter(d=>d.data().senderId!=='beta').length!==1)throw Error('new arrival lost');
+ await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(),'conversations/unread/reads/stranger')));
+});
+test('push subscription is owner-only and cannot be listed or forged for others',async()=>{
+ const data={subscriptionJson:'{"endpoint":"https://fcm.googleapis.com/test"}',enabled:true,language:'ko',updatedAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(a,'users/alpha/pushDevices/device-one'),data));
+ await assertSucceeds(getDoc(doc(a,'users/alpha/pushDevices/device-one')));
+ await assertFails(getDoc(doc(b,'users/alpha/pushDevices/device-one')));
+ await assertFails(getDocs(collection(a,'users/alpha/pushDevices')));
+ await assertFails(setDoc(doc(b,'users/alpha/pushDevices/device-two'),data));
+ await assertFails(setDoc(doc(a,'users/alpha/pushDevices/bad'),{...data,language:'en'}));
+ await assertFails(setDoc(doc(a,'_pushDispatch/forged'),{status:'sent'}));
 });

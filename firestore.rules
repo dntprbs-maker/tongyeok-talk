@@ -17,6 +17,14 @@ service cloud.firestore {
    allow update: if signed() && request.auth.uid == uid
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredLanguage'])
     && request.resource.data.preferredLanguage in ['Korean','Mongolian'];
+   match /pushDevices/{device} {
+    allow get: if signed() && request.auth.uid == uid;
+    allow create, update: if signed() && request.auth.uid == uid
+     && request.resource.data.keys().hasOnly(['subscriptionJson','enabled','language','updatedAt'])
+     && request.resource.data.subscriptionJson is string && request.resource.data.subscriptionJson.size() <= 4096
+     && request.resource.data.enabled is bool && request.resource.data.language in ['ko','mn']
+     && request.resource.data.updatedAt == request.time;
+   }
    match /private/contact {
     allow get: if signed() && request.auth.uid == uid;
     allow create, update: if signed() && request.auth.uid == uid
@@ -47,6 +55,13 @@ service cloud.firestore {
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage','timestamp','groupName'])
     && request.resource.data.lastMessage is string && request.resource.data.lastMessage.size() <= 2000
     && (!request.resource.data.keys().hasAny(['groupName']) || (request.resource.data.groupName is string && request.resource.data.groupName.size() <= 100));
+   match /reads/{uid} {
+    allow get: if member(cid) && request.auth.uid == uid;
+    allow create, update: if member(cid) && request.auth.uid == uid
+     && request.resource.data.keys().hasOnly(['readThrough'])
+     && request.resource.data.readThrough is timestamp && request.resource.data.readThrough <= request.time
+     && (!exists(/databases/$(database)/documents/conversations/$(cid)/reads/$(uid)) || request.resource.data.readThrough >= resource.data.readThrough);
+   }
    match /messages/{mid} {
     allow read: if member(cid);
     allow create: if member(cid)

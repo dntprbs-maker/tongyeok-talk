@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
+import 'push_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +14,35 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _error;
   bool _busy = false;
+  String _push = 'off';
+  @override
+  void initState() {
+    super.initState();
+    PushService.state().then((value) {
+      if (mounted) setState(() => _push = value);
+    });
+  }
+
+  Future<void> _togglePush() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      if (_push == 'enabled') {
+        await PushService.disable();
+        if (mounted) setState(() => _push = 'off');
+      } else {
+        final value = await PushService.enable();
+        if (mounted) setState(() => _push = value);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'pushFailed');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _save() async {
     setState(() {
       _busy = true;
@@ -62,6 +92,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   tr(context, _error!),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
+              const Divider(height: 48),
+              Text(
+                tr(context, 'pushTitle'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(tr(context, 'pushTrial')),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _busy ? null : _togglePush,
+                icon: Icon(
+                  _push == 'enabled'
+                      ? Icons.notifications_active
+                      : Icons.notifications_none,
+                ),
+                label: Text(
+                  tr(
+                    context,
+                    _push == 'enabled' ? 'pushDisable' : 'pushEnable',
+                  ),
+                ),
+              ),
+              Text(
+                tr(
+                  context,
+                  _push == 'enabled'
+                      ? 'pushEnabled'
+                      : _push == 'denied'
+                      ? 'pushDenied'
+                      : _push == 'unsupported'
+                      ? 'pushUnsupported'
+                      : 'pushOff',
+                ),
+              ),
               const Divider(height: 48),
               Text(
                 tr(context, 'account'),
@@ -122,6 +186,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.logout),
                 label: Text(tr(context, 'signOut')),
                 onPressed: () async {
+                  await PushService.disable();
                   await FirebaseAuth.instance.signOut();
                   if (context.mounted) {
                     Navigator.pushNamedAndRemoveUntil(

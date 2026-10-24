@@ -9,6 +9,7 @@ import 'message_bubble.dart';
 import 'group_settings_screen.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
+import 'read_receipts.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -24,7 +25,8 @@ class ChatScreen extends StatefulWidget {
   ChatScreenState createState() => ChatScreenState();
 }
 
-class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
+class ChatScreenState extends State<ChatScreen>
+    with WidgetsBindingObserver, RouteAware {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final User _currentUser = FirebaseAuth.instance.currentUser!;
@@ -36,6 +38,54 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isInitialLoad = true;
   bool _isGroupChat = false;
   bool _sending = false;
+  Timestamp? _visibleThrough, _markedThrough;
+  bool _marking = false;
+  ModalRoute<void>? _route;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != _route) {
+      chatRouteObserver.unsubscribe(this);
+      _route = route;
+      if (route != null) chatRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() => _markVisibleRead();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _markVisibleRead();
+  }
+
+  Future<void> _markVisibleRead() async {
+    final through = _visibleThrough;
+    if (!mounted ||
+        _marking ||
+        through == null ||
+        _route?.isCurrent != true ||
+        (WidgetsBinding.instance.lifecycleState != null &&
+            WidgetsBinding.instance.lifecycleState !=
+                AppLifecycleState.resumed) ||
+        (_markedThrough != null && through.compareTo(_markedThrough!) <= 0)) {
+      return;
+    }
+    _marking = true;
+    try {
+      await ReadReceipts.mark(widget.conversationId, _currentUser.uid, through);
+      _markedThrough = through;
+    } catch (_) {
+      // Keep unread intact on failure; reopening/reconnecting retries safely.
+    } finally {
+      _marking = false;
+    }
+    if (_markedThrough == through && _visibleThrough != through) {
+      _markVisibleRead();
+    }
+  }
 
   @override
   void initState() {
@@ -51,6 +101,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    chatRouteObserver.unsubscribe(this);
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -278,6 +329,17 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (docs.isEmpty) {
           return Center(child: Text(tr(context, 'noMessages')));
         }
+
+        for (final doc in docs) {
+          final value = (doc.data() as Map<String, dynamic>)['timestamp'];
+          if (!doc.metadata.hasPendingWrites &&
+              value is Timestamp &&
+              (_visibleThrough == null ||
+                  value.compareTo(_visibleThrough!) > 0)) {
+            _visibleThrough = value;
+          }
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) => _markVisibleRead());
 
         // Build local list
         _msgList =

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'chat_screen.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
+import 'read_receipts.dart';
 
 class RecentConversationsScreen extends StatelessWidget {
   RecentConversationsScreen({super.key});
@@ -104,12 +105,10 @@ class RecentConversationsScreen extends StatelessWidget {
                         horizontal: 24,
                         vertical: 10,
                       ),
-                      leading: CircleAvatar(
-                        child: Icon(
-                          data['isGroup'] == true
-                              ? Icons.group_outlined
-                              : Icons.person_outline,
-                        ),
+                      leading: UnreadAvatar(
+                        conversationId: room.id,
+                        uid: currentUser.uid,
+                        group: data['isGroup'] == true,
                       ),
                       title: Text(
                         label,

@@ -12,6 +12,7 @@ import 'home_screen.dart';
 import 'settings_screen.dart';
 import 'app_language.dart';
 import 'brand.dart';
+import 'read_receipts.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
@@ -43,6 +44,7 @@ class MyApp extends StatelessWidget {
       builder:
           (context, _) => MaterialApp(
             navigatorKey: _navigatorKey,
+            navigatorObservers: [chatRouteObserver],
             title: AppLanguage.instance.text('app'),
             debugShowCheckedModeBanner: false,
             locale: Locale(AppLanguage.instance.code),
