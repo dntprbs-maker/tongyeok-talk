@@ -35,7 +35,7 @@ test('SMS verification cannot be forged and only two profile languages are accep
  await assertSucceeds(updateDoc(doc(a,'users/alpha'),{preferredLanguage:'Mongolian'}));
 });
 
-test('unread receipts are private, monotonic, and count only unseen incoming messages',async()=>{
+test('receipts visible only to room members, monotonic, and count incoming messages',async()=>{
  const room=doc(a,'conversations/unread');
  await setDoc(room,{participants:['alpha','beta'],lastMessage:'',timestamp:serverTimestamp()});
  const send=async(db,id,sender,text)=>{const batch=writeBatch(db);batch.set(doc(db,'conversations/unread/messages/'+id),{senderId:sender,originalText:text,translations:{},sourceLang:'ko',timestamp:serverTimestamp()});batch.update(doc(db,'conversations/unread'),{lastMessage:text,timestamp:serverTimestamp()});await batch.commit();};
@@ -45,7 +45,7 @@ test('unread receipts are private, monotonic, and count only unseen incoming mes
  if(pending.docs.filter(d=>d.data().senderId!=='beta').length!==2)throw Error('incoming count mismatch');
  const through=pending.docs.at(-1).data().timestamp,receipt=doc(b,'conversations/unread/reads/beta');
  await assertSucceeds(setDoc(receipt,{readThrough:through}));
- await assertFails(getDoc(doc(a,'conversations/unread/reads/beta')));
+ await assertSucceeds(getDoc(doc(a,'conversations/unread/reads/beta')));
  await assertFails(setDoc(doc(a,'conversations/unread/reads/beta'),{readThrough:through}));
  await assertFails(setDoc(receipt,{readThrough:Timestamp.fromMillis(1)}));
  await assertFails(setDoc(receipt,{readThrough:Timestamp.fromMillis(Date.now()+86400000)}));
@@ -63,4 +63,15 @@ test('push subscription is owner-only and cannot be listed or forged for others'
  await assertFails(setDoc(doc(b,'users/alpha/pushDevices/device-two'),data));
  await assertFails(setDoc(doc(a,'users/alpha/pushDevices/bad'),{...data,language:'en'}));
  await assertFails(setDoc(doc(a,'_pushDispatch/forged'),{status:'sent'}));
+});
+test('translation output cannot be forged, retries require membership and failed status',async()=>{
+ const path='conversations/unread/messages/two';
+ await assertFails(updateDoc(doc(a,path),{translations:{mn:'forged'},translationStatus:'done'}));
+ const retry={messageId:'two',requestedBy:'alpha',requestedAt:serverTimestamp()};
+ await assertSucceeds(setDoc(doc(a,'conversations/unread/translationRetries/legacy'),{...retry,messageId:'one'}));
+ await env.withSecurityRulesDisabled(async(context)=>{await updateDoc(doc(context.firestore(),path),{translationStatus:'failed'});});
+ await assertSucceeds(setDoc(doc(a,'conversations/unread/translationRetries/request-one'),retry));
+ await assertFails(setDoc(doc(b,'conversations/unread/translationRetries/forged'),retry));
+ await assertFails(setDoc(doc(env.authenticatedContext('stranger').firestore(),'conversations/unread/translationRetries/outsider'),{...retry,requestedBy:'stranger'}));
+ await assertFails(getDocs(collection(env.authenticatedContext('stranger').firestore(),'conversations/unread/messages')));
 });

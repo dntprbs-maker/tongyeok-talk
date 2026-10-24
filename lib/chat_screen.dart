@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
-import 'utils/languages.dart';
 import 'message_bubble.dart';
 import 'group_settings_screen.dart';
 import 'app_language.dart';
@@ -31,15 +30,15 @@ class ChatScreenState extends State<ChatScreen>
   final ScrollController _scrollController = ScrollController();
   final User _currentUser = FirebaseAuth.instance.currentUser!;
 
-  String? _otherUserId;
-  String _otherUserLanguage = 'Korean';
-  String _myLanguage = 'Korean';
   List<Map<String, dynamic>> _msgList = [];
   bool _isInitialLoad = true;
   bool _isGroupChat = false;
   bool _sending = false;
   Timestamp? _visibleThrough, _markedThrough;
   bool _marking = false;
+  final Map<String, Timestamp> _receipts = {};
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _receiptSubscription;
+  final Set<String> _retrying = {};
   ModalRoute<void>? _route;
 
   @override
@@ -91,7 +90,24 @@ class ChatScreenState extends State<ChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _fetchParticipantsAndLanguages().then((_) {
+    _receiptSubscription = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .collection('reads')
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted) return;
+          setState(() {
+            _receipts.clear();
+            for (final doc in snapshot.docs) {
+              final value = doc.data()['readThrough'];
+              if (doc.id != _currentUser.uid && value is Timestamp) {
+                _receipts[doc.id] = value;
+              }
+            }
+          });
+        }, onError: (_) {});
+    _fetchParticipantsAndLanguages().catchError((_) {}).whenComplete(() {
       if (mounted) {
         setState(() => _isInitialLoad = false);
       }
@@ -102,6 +118,7 @@ class ChatScreenState extends State<ChatScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     chatRouteObserver.unsubscribe(this);
+    _receiptSubscription?.cancel();
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -115,7 +132,6 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _fetchParticipantsAndLanguages() async {
-    final myUid = _currentUser.uid;
     final convDoc =
         await FirebaseFirestore.instance
             .collection('conversations')
@@ -127,32 +143,6 @@ class ChatScreenState extends State<ChatScreen>
     if (data == null) return;
 
     _isGroupChat = (data['isGroup'] ?? false) as bool;
-    final participants = data['participants'] as List<dynamic>? ?? [];
-    for (String uid in participants.cast<String>()) {
-      if (uid != myUid) {
-        _otherUserId = uid;
-        break;
-      }
-    }
-    if (_otherUserId == null) return;
-
-    // Other user's language
-    final otherDoc =
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_otherUserId!)
-            .get();
-    if (otherDoc.exists) {
-      _otherUserLanguage =
-          (otherDoc.data()?['preferredLanguage'] ?? 'Korean') as String;
-    }
-
-    // My language
-    final myDoc =
-        await FirebaseFirestore.instance.collection('users').doc(myUid).get();
-    if (myDoc.exists) {
-      _myLanguage = (myDoc.data()?['preferredLanguage'] ?? 'Korean') as String;
-    }
   }
 
   Future<void> _sendMessage() async {
@@ -167,15 +157,7 @@ class ChatScreenState extends State<ChatScreen>
     }
     setState(() => _sending = true);
     try {
-      final profile =
-          (await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(_currentUser.uid)
-                  .get())
-              .data();
-      final source = _langToIso(
-        profile?['preferredLanguage'] as String? ?? 'Korean',
-      );
+      final source = AppLanguage.instance.code;
       final room = FirebaseFirestore.instance
           .collection('conversations')
           .doc(widget.conversationId);
@@ -204,8 +186,34 @@ class ChatScreenState extends State<ChatScreen>
     }
   }
 
-  String _langToIso(String lang) {
-    return supportedLanguages[lang] ?? 'ko';
+  Future<void> _retryTranslation(String messageId) async {
+    if (!_retrying.add(messageId)) return;
+    setState(() {});
+    try {
+      await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .collection('translationRetries')
+          .add({
+            'messageId': messageId,
+            'requestedBy': _currentUser.uid,
+            'requestedAt': FieldValue.serverTimestamp(),
+          });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, 'translationRequested'))),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr(context, errorKey(error)))));
+      }
+    } finally {
+      _retrying.remove(messageId);
+      if (mounted) setState(() {});
+    }
   }
 
   void _scrollToBottom() {
@@ -354,17 +362,13 @@ class ChatScreenState extends State<ChatScreen>
                   data['translations'] as Map<String, dynamic>? ?? {};
 
               final isMe = senderId == _currentUser.uid;
-              final translatedText =
-                  isMe
-                      ? (_isGroupChat
-                          ? originalText
-                          : (translations[_otherUserId] ?? originalText))
-                      : (translations[_currentUser.uid] ?? originalText);
-
-              final targetLang =
-                  (isMe && _isGroupChat)
-                      ? null
-                      : _langToIso(isMe ? _otherUserLanguage : _myLanguage);
+              final targetLang = sourceLang == 'ko' ? 'mn' : 'ko';
+              final translatedText = translations[targetLang] as String? ?? '';
+              final status = data['translationStatus'] as String? ?? 'pending';
+              final others =
+                  _receipts.values
+                      .where((value) => ts != null && value.compareTo(ts) >= 0)
+                      .length;
 
               return {
                 'senderId': senderId,
@@ -373,6 +377,13 @@ class ChatScreenState extends State<ChatScreen>
                 'timestamp': dt,
                 'sourceLang': sourceLang,
                 'targetLang': targetLang,
+                'id': doc.id,
+                'translationStatus': status,
+                'sent': !doc.metadata.hasPendingWrites,
+                'read': isMe && others > 0,
+                'retryAllowed':
+                    (data['translationAttempts'] as num? ?? 0) < 3 &&
+                    status == 'failed',
               };
             }).toList();
 
@@ -413,6 +424,17 @@ class ChatScreenState extends State<ChatScreen>
                   timestamp: dt,
                   sourceLang: msg['sourceLang'] as String?,
                   targetLang: msg['targetLang'] as String?,
+                  translationStatus: msg['translationStatus'] as String,
+                  sent: msg['sent'] as bool,
+                  read: msg['read'] as bool,
+                  onRetry:
+                      (msg['retryAllowed'] == true ||
+                                  (msg['translationStatus'] == 'pending' &&
+                                      DateTime.now().difference(dt).inSeconds >
+                                          60)) &&
+                              !_retrying.contains(msg['id'])
+                          ? () => _retryTranslation(msg['id'] as String)
+                          : null,
                 );
 
                 if (dayMarker != null) {

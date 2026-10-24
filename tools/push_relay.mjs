@@ -5,6 +5,7 @@ import {GoogleAuth,OAuth2Client} from 'google-auth-library';
 import webpush from 'web-push';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {compareTimestamps} from './push_helpers.mjs';
 
 const projectId = 'tongyeok-talk-lab-20261024';
 if (process.env.TONGYEOK_PROJECT !== projectId) throw new Error('Explicit isolated project guard required');
@@ -18,15 +19,16 @@ webpush.setVapidDetails('https://dntprbs-maker.github.io/tongyeok-talk/', vapid.
 const since = Timestamp.now(), watching = new Map(), inflight = new Set();
 let success = 0, failures = 0;
 const allowed = host => host === 'fcm.googleapis.com' || host === 'updates.push.services.mozilla.com' || host.endsWith('.push.services.mozilla.com') || host === 'web.push.apple.com';
-async function deliver(room, message) {
+async function deliver(room, message, replay = false) {
   const data = message.data();
-  if (!data.timestamp || data.timestamp.compareTo(since) < 0) return;
+  if (!data.timestamp || (!replay && compareTimestamps(data.timestamp, since) < 0)) return;
   const participants = room.data().participants || [];
   // Allow the active room's visible-message receipt to reach the server first.
   await new Promise(resolve => setTimeout(resolve, 1200));
   for (const uid of participants.filter(uid => uid !== data.senderId)) {
     const receipt = await room.ref.collection('reads').doc(uid).get();
-    if (receipt.data()?.readThrough?.compareTo(data.timestamp) >= 0) continue;
+    const readThrough = receipt.data()?.readThrough;
+    if (readThrough && compareTimestamps(readThrough, data.timestamp) >= 0) continue;
     const devices = await db.collection('users').doc(uid).collection('pushDevices').where('enabled','==',true).get();
     for (const device of devices.docs) {
       const id = createHash('sha256').update(`${room.id}/${message.id}/${uid}/${device.id}`).digest('hex');
@@ -63,7 +65,7 @@ const stop = db.collection('conversations').onSnapshot(snapshot => {
     if (change.type === 'removed') { watching.get(room.id)?.(); watching.delete(room.id); continue; }
     if (watching.has(room.id)) continue;
     watching.set(room.id, room.ref.collection('messages').where('timestamp','>=',since).onSnapshot(messages => {
-      for (const item of messages.docChanges()) if (item.type === 'added') deliver(room,item.doc).catch(() => { failures++; console.error(JSON.stringify({event:'delivery_failed', failures})); });
+      for (const item of messages.docChanges()) if (item.type === 'added') deliver(room,item.doc).catch(error => { failures++; console.error(JSON.stringify({event:'delivery_failed',code:error.code||error.name, failures})); });
     }, error => console.error(JSON.stringify({event:'message_listener_failed',code:error.code}))));
   }
 }, error => { console.error(JSON.stringify({event:'room_listener_failed',code:error.code})); process.exitCode=1; });
@@ -71,3 +73,12 @@ const heartbeat=setInterval(health,30000);
 console.log(JSON.stringify({event:'relay_started',projectId,startedAt:new Date().toISOString(),mode:'local-PC trial; no cloud billing'}));
 function shutdown(){clearInterval(heartbeat);stop();for(const unsubscribe of watching.values())unsubscribe();db.terminate().finally(()=>process.exit());}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
+
+// Operator-only retry of a previously stored, explicitly requested test message.
+if (process.env.TONGYEOK_REPLAY_ROOM && process.env.TONGYEOK_REPLAY_MESSAGE) {
+  const room = await db.collection('conversations').doc(process.env.TONGYEOK_REPLAY_ROOM).get();
+  const message = await room.ref.collection('messages').doc(process.env.TONGYEOK_REPLAY_MESSAGE).get();
+  if (!room.exists || !message.exists) throw new Error('Replay target does not exist');
+  await deliver(room, message, true);
+  health();
+}

@@ -1,0 +1,8 @@
+[
+  {"id":"ko-greeting","source":"ko","target":"mn","text":"안녕하세요. 내일 오전 9시에 만나요."},
+  {"id":"mn-greeting","source":"mn","target":"ko","text":"Сайн байна уу. Маргааш өглөө 9 цагт уулзъя."},
+  {"id":"ko-work","source":"ko","target":"mn","text":"오늘은 3층부터 청소해 주세요. 바닥이 젖어 있으니 조심하세요."},
+  {"id":"mn-work","source":"mn","target":"ko","text":"Өнөөдөр гуравдугаар давхраас эхэлж цэвэрлээрэй. Шал нойтон байгаа тул болгоомжлоорой."},
+  {"id":"ko-negation","source":"ko","target":"mn","text":"세제를 섞지 마세요. 작업이 끝나면 문을 잠가 주세요."},
+  {"id":"mn-payment","source":"mn","target":"ko","text":"Би 30,000 вон шилжүүлсэн. Та шалгаад хэлээрэй."}
+]
