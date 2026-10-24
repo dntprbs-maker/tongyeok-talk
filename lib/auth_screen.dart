@@ -1,223 +1,246 @@
 import 'package:flutter/material.dart';
 import 'auth_service.dart';
-import 'utils/languages.dart';
+import 'phone_identity.dart';
+import 'app_language.dart';
+import 'brand.dart';
+import 'ui_errors.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool isSignUp;
-
-  const AuthScreen({Key? key, this.isSignUp = false}) : super(key: key);
-
+  const AuthScreen({super.key, this.isSignUp = false});
   @override
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final AuthService _authService = AuthService();
-  final _formKey = GlobalKey<FormState>();
-  String _email = '';
-  String _password = '';
-  String _username = '';
-  String _preferredLanguage = 'English';
-  bool _isSignUp = false;
-
+  final _form = GlobalKey<FormState>();
+  final _name = TextEditingController(),
+      _phone = TextEditingController(),
+      _password = TextEditingController();
+  late bool _signUp;
+  late String _country;
+  bool _busy = false, _obscure = true;
+  String? _error;
   @override
   void initState() {
     super.initState();
-    _isSignUp = widget.isSignUp;
+    _signUp = widget.isSignUp;
+    _country = AppLanguage.instance.code == 'mn' ? '976' : '82';
   }
 
-  void _toggleForm() {
-    setState(() {
-      _isSignUp = !_isSignUp;
-    });
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
   }
 
   Future<void> _submit() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      try {
-        if (_isSignUp) {
-          await _authService.signUp(
-            _email,
-            _password,
-            _username,
-            _preferredLanguage,
-          );
-        } else {
-          await _authService.signIn(_email, _password);
-        }
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/recentConversations');
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    if (_busy || !_form.currentState!.validate()) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final phone = PhoneIdentity.parse(_phone.text, defaultCountry: _country);
+      final lang = AppLanguage.instance.profileLanguage;
+      if (_signUp) {
+        await AuthService().signUp(_name.text, phone, _password.text, lang);
+      } else {
+        await AuthService().signIn(phone, _password.text, lang);
       }
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/recentConversations',
+          (_) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = errorKey(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.of(context).size;
-    final bool isMobile = screenSize.width < 600;
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(_isSignUp ? 'Sign Up' : 'Sign In'),
-      ),
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6A82FB), Color(0xFFFC5C7D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(tr(context, _signUp ? 'signUpTitle' : 'signInTitle')),
+    ),
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 500),
-              child: Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 6,
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(
-                            24,
-                          ), // You can adjust the corner radius
-                          child: Image.asset(
-                            'assets/images/BridgeChat.png',
-                            width: isMobile ? 350 : 500,
-                            height: isMobile ? 190 : 250,
-                            fit: BoxFit.cover,
-                          ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+            child: AutofillGroup(
+              child: Form(
+                key: _form,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const LanguagePicker(),
+                    const SizedBox(height: 24),
+                    const BrandHeader(compact: true),
+                    const SizedBox(height: 24),
+                    if (_signUp) ...[
+                      TextFormField(
+                        key: const ValueKey('signup-name'),
+                        controller: _name,
+                        enabled: !_busy,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.name],
+                        maxLength: 40,
+                        decoration: InputDecoration(
+                          labelText: tr(context, 'name'),
+                          helperText: tr(context, 'nameHint'),
+                          prefixIcon: const Icon(Icons.person_outline),
                         ),
-
-                        const SizedBox(height: 16),
-                        Text(
-                          _isSignUp ? 'Create an Account' : 'Welcome Back',
-                          style: Theme.of(context).textTheme.headlineSmall,
+                        validator:
+                            (v) =>
+                                v == null ||
+                                        v.trim().isEmpty ||
+                                        v.trim().length > 40
+                                    ? tr(context, 'nameRequired')
+                                    : null,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    DropdownButtonFormField<String>(
+                      key: const ValueKey('phone-country'),
+                      initialValue: _country,
+                      decoration: InputDecoration(
+                        labelText: tr(context, 'country'),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: '82',
+                          child: Text('+82 ${tr(context, 'korea')}'),
                         ),
-                        const SizedBox(height: 24),
-                        if (_isSignUp)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: TextFormField(
-                              style: TextStyle(fontSize: isMobile ? 14 : 16),
-                              decoration: const InputDecoration(
-                                labelText: 'Username',
-                                prefixIcon: Icon(Icons.person),
-                              ),
-                              onSaved: (value) => _username = value!.trim(),
-                              validator:
-                                  (value) =>
-                                      (value == null || value.isEmpty)
-                                          ? 'Enter a username'
-                                          : null,
-                            ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: TextFormField(
-                            style: TextStyle(fontSize: isMobile ? 14 : 16),
-                            decoration: const InputDecoration(
-                              labelText: 'Email',
-                              prefixIcon: Icon(Icons.email),
-                            ),
-                            onSaved: (value) => _email = value!.trim(),
-                            validator:
-                                (value) =>
-                                    (value == null || value.isEmpty)
-                                        ? 'Enter an email'
-                                        : null,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: TextFormField(
-                            style: TextStyle(fontSize: isMobile ? 14 : 16),
-                            decoration: const InputDecoration(
-                              labelText: 'Password',
-                              prefixIcon: Icon(Icons.lock),
-                            ),
-                            obscureText: true,
-                            onSaved: (value) => _password = value!.trim(),
-                            validator:
-                                (value) =>
-                                    (value != null && value.length < 6)
-                                        ? 'Password too short'
-                                        : null,
-                          ),
-                        ),
-                        if (_isSignUp)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: DropdownButtonFormField<String>(
-                              value: _preferredLanguage,
-                              decoration: const InputDecoration(
-                                labelText: 'Preferred Language',
-                              ),
-                              items:
-                                  supportedLanguages.keys.map((langName) {
-                                    return DropdownMenuItem(
-                                      value: langName,
-                                      child: Text(langName),
-                                    );
-                                  }).toList(),
-                              onChanged: (val) {
-                                setState(() {
-                                  _preferredLanguage = val ?? 'English';
-                                });
-                              },
-                            ),
-                          ),
-                        const SizedBox(height: 24),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ElevatedButton(
-                              onPressed: _submit,
-                              child: Text(
-                                _isSignUp ? 'Sign Up' : 'Sign In',
-                                style: TextStyle(fontSize: isMobile ? 14 : 16),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            TextButton(
-                              onPressed: _toggleForm,
-                              child: Text(
-                                _isSignUp
-                                    ? 'Already have an account? Sign In'
-                                    : 'Don’t have an account? Sign Up',
-                                style: TextStyle(fontSize: isMobile ? 14 : 16),
-                              ),
-                            ),
-                          ],
+                        DropdownMenuItem(
+                          value: '976',
+                          child: Text('+976 ${tr(context, 'mongolia')}'),
                         ),
                       ],
+                      onChanged:
+                          _busy ? null : (v) => setState(() => _country = v!),
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      key: const ValueKey('auth-phone'),
+                      controller: _phone,
+                      enabled: !_busy,
+                      keyboardType: TextInputType.phone,
+                      autofillHints: const [AutofillHints.telephoneNumber],
+                      textInputAction: TextInputAction.next,
+                      decoration: InputDecoration(
+                        labelText: tr(context, 'phone'),
+                        hintText:
+                            _country == '82' ? '010-1234-5678' : '9911-2233',
+                        prefixIcon: const Icon(Icons.phone_outlined),
+                      ),
+                      validator: (v) {
+                        try {
+                          PhoneIdentity.parse(
+                            v ?? '',
+                            defaultCountry: _country,
+                          );
+                          return null;
+                        } catch (_) {
+                          return tr(context, 'phoneInvalid');
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      key: const ValueKey('auth-password'),
+                      controller: _password,
+                      enabled: !_busy,
+                      obscureText: _obscure,
+                      autofillHints: [
+                        _signUp
+                            ? AutofillHints.newPassword
+                            : AutofillHints.password,
+                      ],
+                      onFieldSubmitted: (_) => _submit(),
+                      decoration: InputDecoration(
+                        labelText: tr(context, 'password'),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          tooltip: tr(
+                            context,
+                            _obscure ? 'showPassword' : 'hidePassword',
+                          ),
+                          onPressed: () => setState(() => _obscure = !_obscure),
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                      validator:
+                          (v) =>
+                              v == null || v.isEmpty
+                                  ? tr(context, 'passwordRequired')
+                                  : (_signUp && v.length < 8
+                                      ? tr(context, 'passwordShort')
+                                      : null),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      tr(context, 'phoneNotice'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: Text(
+                          tr(context, _error!),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 24),
+                    FilledButton(
+                      key: const ValueKey('auth-submit'),
+                      onPressed: _busy ? null : _submit,
+                      child:
+                          _busy
+                              ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                              : Text(
+                                tr(context, _signUp ? 'signUp' : 'signIn'),
+                              ),
+                    ),
+                    TextButton(
+                      onPressed:
+                          _busy
+                              ? null
+                              : () => setState(() {
+                                _signUp = !_signUp;
+                                _error = null;
+                                _form.currentState!.reset();
+                              }),
+                      child: Text(
+                        tr(context, _signUp ? 'alreadyAccount' : 'newAccount'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

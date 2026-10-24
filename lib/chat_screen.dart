@@ -7,16 +7,18 @@ import 'package:intl/intl.dart';
 import 'utils/languages.dart';
 import 'message_bubble.dart';
 import 'group_settings_screen.dart';
+import 'app_language.dart';
+import 'ui_errors.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
   final String otherUserName;
 
   const ChatScreen({
-    Key? key,
+    super.key,
     required this.conversationId,
     required this.otherUserName,
-  }) : super(key: key);
+  });
 
   @override
   ChatScreenState createState() => ChatScreenState();
@@ -28,11 +30,12 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final User _currentUser = FirebaseAuth.instance.currentUser!;
 
   String? _otherUserId;
-  String _otherUserLanguage = 'English';
-  String _myLanguage = 'English';
+  String _otherUserLanguage = 'Korean';
+  String _myLanguage = 'Korean';
   List<Map<String, dynamic>> _msgList = [];
   bool _isInitialLoad = true;
   bool _isGroupChat = false;
+  bool _sending = false;
 
   @override
   void initState() {
@@ -49,6 +52,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
+    _messageController.dispose();
     super.dispose();
   }
 
@@ -89,63 +93,68 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             .get();
     if (otherDoc.exists) {
       _otherUserLanguage =
-          (otherDoc.data()?['preferredLanguage'] ?? 'English') as String;
+          (otherDoc.data()?['preferredLanguage'] ?? 'Korean') as String;
     }
 
     // My language
     final myDoc =
         await FirebaseFirestore.instance.collection('users').doc(myUid).get();
     if (myDoc.exists) {
-      _myLanguage = (myDoc.data()?['preferredLanguage'] ?? 'English') as String;
+      _myLanguage = (myDoc.data()?['preferredLanguage'] ?? 'Korean') as String;
     }
   }
 
   Future<void> _sendMessage() async {
+    if (_sending) return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-    _messageController.clear();
-
-    final myUid = _currentUser.uid;
-    final convDoc =
-        await FirebaseFirestore.instance
-            .collection('conversations')
-            .doc(widget.conversationId)
-            .get();
-
-    final data = convDoc.data();
-    if (data == null) return;
-
-    final myDoc =
-        await FirebaseFirestore.instance.collection('users').doc(myUid).get();
-    final myLang = (myDoc.data()?['preferredLanguage'] ?? 'English') as String;
-    final sourceLang = _langToIso(myLang);
-
-    // Original-only public preview: never fabricate a translation.
-    final translations = <String,String>{};
-
-    await FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(widget.conversationId)
-        .collection('messages')
-        .add({
-          'senderId': myUid,
-          'originalText': text,
-          'translations': translations,
-          'timestamp': FieldValue.serverTimestamp(),
-          'sourceLang': sourceLang,
-        });
-
-    await FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(widget.conversationId)
-        .update({
-          'lastMessage': text,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+    if (text.length > 2000) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(tr(context, 'messageTooLong'))));
+      return;
+    }
+    setState(() => _sending = true);
+    try {
+      final profile =
+          (await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(_currentUser.uid)
+                  .get())
+              .data();
+      final source = _langToIso(
+        profile?['preferredLanguage'] as String? ?? 'Korean',
+      );
+      final room = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId);
+      final batch = FirebaseFirestore.instance.batch();
+      batch.set(room.collection('messages').doc(), {
+        'senderId': _currentUser.uid,
+        'originalText': text,
+        'translations': <String, String>{},
+        'timestamp': FieldValue.serverTimestamp(),
+        'sourceLang': source,
+      });
+      batch.update(room, {
+        'lastMessage': text,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      _messageController.clear();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr(context, errorKey(e)))));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   String _langToIso(String lang) {
-    return supportedLanguages[lang] ?? 'en';
+    return supportedLanguages[lang] ?? 'ko';
   }
 
   void _scrollToBottom() {
@@ -194,7 +203,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Container(
       // ADDED: Slight frosted-white with boxShadow to make header stand out
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.75),
+        color: Colors.white.withValues(alpha: 0.75),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -207,6 +216,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       child: Row(
         children: [
           IconButton(
+            tooltip: tr(context, 'back'),
             icon: const Icon(Icons.arrow_back),
             onPressed: () => Navigator.pop(context),
           ),
@@ -219,6 +229,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           if (_isGroupChat)
             IconButton(
+              tooltip: tr(context, 'groupSettings'),
               icon: const Icon(Icons.settings),
               onPressed: () {
                 Navigator.push(
@@ -250,9 +261,12 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (snap.connectionState == ConnectionState.waiting) {
           return const SizedBox();
         }
+        if (snap.hasError) {
+          return Center(child: Text(tr(context, errorKey(snap.error!))));
+        }
         final docs = snap.data?.docs ?? [];
         if (docs.isEmpty) {
-          return const Center(child: Text('No messages yet.'));
+          return Center(child: Text(tr(context, 'noMessages')));
         }
 
         // Build local list
@@ -263,7 +277,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               final originalText = data['originalText'] ?? '';
               final ts = data['timestamp'] as Timestamp?;
               final dt = ts?.toDate() ?? DateTime.now();
-              final sourceLang = data['sourceLang'] ?? 'en';
+              final sourceLang = data['sourceLang'] ?? 'ko';
               final translations =
                   data['translations'] as Map<String, dynamic>? ?? {};
 
@@ -346,7 +360,10 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildDayMarker(DateTime date) {
-    final dayString = DateFormat('EEEE, MMM d').format(date);
+    final dayString = DateFormat(
+      'y.M.d EEEE',
+      AppLanguage.instance.code,
+    ).format(date);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Center(
@@ -369,7 +386,7 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     return Container(
       // ADDED: Slight frosted-white background & shadow for the bottom input bar
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.8),
+        color: Colors.white.withValues(alpha: 0.8),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -386,11 +403,17 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               controller: _messageController,
               minLines: 1,
               maxLines: 5,
-              decoration: const InputDecoration(labelText: 'Enter message'),
+              decoration: InputDecoration(labelText: tr(context, 'message')),
+              maxLength: 2000,
+              enabled: !_sending,
               onTap: _scrollToBottom,
             ),
           ),
-          IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
+          IconButton(
+            tooltip: tr(context, 'send'),
+            icon: const Icon(Icons.send),
+            onPressed: _sending ? null : _sendMessage,
+          ),
         ],
       ),
     );

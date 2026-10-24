@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'utils/languages.dart';
+import 'app_language.dart';
 
 class MessageBubble extends StatefulWidget {
   final String senderId;
@@ -12,7 +12,7 @@ class MessageBubble extends StatefulWidget {
   final String? targetLang;
 
   const MessageBubble({
-    Key? key,
+    super.key,
     required this.senderId,
     required this.currentUserId,
     required this.originalText,
@@ -20,7 +20,7 @@ class MessageBubble extends StatefulWidget {
     required this.timestamp,
     this.sourceLang,
     this.targetLang,
-  }) : super(key: key);
+  });
 
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
@@ -38,7 +38,9 @@ class _MessageBubbleState extends State<MessageBubble> {
   @override
   Widget build(BuildContext context) {
     final bool isMe = widget.senderId == widget.currentUserId;
-    final timeString = DateFormat('h:mm a').format(widget.timestamp);
+    final timeString = DateFormat.Hm(
+      AppLanguage.instance.code,
+    ).format(widget.timestamp);
     final bool hasDifferentTranslation =
         widget.originalText != widget.translatedText &&
         widget.translatedText.isNotEmpty;
@@ -94,7 +96,10 @@ class _MessageBubbleState extends State<MessageBubble> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    'Translated from ${_getLangName(widget.sourceLang)} to ${_getLangName(widget.targetLang)}',
+                    tr(context, 'translationInfo', {
+                      'from': _getLangName(widget.sourceLang),
+                      'to': _getLangName(widget.targetLang),
+                    }),
                     style: TextStyle(
                       fontSize: 10,
                       fontStyle: FontStyle.italic,
@@ -109,7 +114,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                   },
                   style: TextButton.styleFrom(padding: EdgeInsets.zero),
                   child: Text(
-                    _showOriginal ? 'View Translated' : 'View Original',
+                    tr(context, _showOriginal ? 'translated' : 'original'),
                     style: TextStyle(fontSize: 12, color: linkColor),
                   ),
                 ),
@@ -123,10 +128,5 @@ class _MessageBubbleState extends State<MessageBubble> {
 
 String _getLangName(String? code) {
   if (code == null) return '';
-  return supportedLanguages.entries
-      .firstWhere(
-        (entry) => entry.value == code,
-        orElse: () => const MapEntry('Unknown', ''),
-      )
-      .key;
+  return AppLanguage.instance.text(code == 'mn' ? 'mn' : 'ko');
 }

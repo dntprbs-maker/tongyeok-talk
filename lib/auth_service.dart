@@ -1,64 +1,83 @@
-// lib/auth_service.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'phone_identity.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // Sign up with email, password, and username.
+  final _auth = FirebaseAuth.instance;
+  final _db = FirebaseFirestore.instance;
   Future<UserCredential> signUp(
-    String email,
+    String name,
+    PhoneIdentity phone,
     String password,
-    String username,
-    String preferredLanguage,
+    String language,
   ) async {
-    // Check if the username is already taken
-    final QuerySnapshot result =
-        await _firestore
-            .collection('users')
-            .where('username', isEqualTo: username)
-            .get();
-
-    if (result.docs.isNotEmpty) {
-      throw Exception('Username already taken.');
-    }
-
+    UserCredential credential;
     try {
-      // Create the user with Firebase Auth.
-      UserCredential cred = await _auth.createUserWithEmailAndPassword(
-        email: email,
+      credential = await _auth.createUserWithEmailAndPassword(
+        email: phone.authAlias,
         password: password,
       );
-
-      // Save the user profile in Firestore
-      await _firestore.collection('users').doc(cred.user!.uid).set({
-        'username': username,
-        'preferredLanguage': preferredLanguage,
+    } on FirebaseAuthException catch (e) {
+      if (e.code != 'email-already-in-use') rethrow;
+      // Recover a registration interrupted before its atomic profile write.
+      try {
+        credential = await _auth.signInWithEmailAndPassword(
+          email: phone.authAlias,
+          password: password,
+        );
+      } on FirebaseAuthException {
+        throw StateError('phoneInUse');
+      }
+      if ((await _db.collection('users').doc(credential.user!.uid).get())
+          .exists) {
+        throw StateError('phoneInUse');
+      }
+    }
+    final uid = credential.user!.uid;
+    await _db.runTransaction((tx) async {
+      final lookup = _db.collection('phoneDirectory').doc(phone.directoryKey);
+      final old = await tx.get(lookup);
+      if (old.exists && old.data()?['uid'] != uid) {
+        throw StateError('phoneInUse');
+      }
+      if (!old.exists) tx.set(lookup, {'uid': uid});
+      tx.set(_db.collection('users').doc(uid), {
+        'displayName': name.trim(),
+        'preferredLanguage': language,
         'createdAt': FieldValue.serverTimestamp(),
       });
-
-      return cred;
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  // Sign in with email and password.
-  Future<UserCredential> signIn(String email, String password) async {
-    try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
+      tx.set(
+        _db.collection('users').doc(uid).collection('private').doc('contact'),
+        {'phoneE164': phone.e164, 'phoneVerified': false},
       );
-      return result;
-    } catch (e) {
-      rethrow;
-    }
+    });
+    return credential;
   }
 
-  // Sign out.
-  Future<void> signOut() async {
-    await _auth.signOut();
+  Future<UserCredential> signIn(
+    PhoneIdentity phone,
+    String password,
+    String language,
+  ) async {
+    final credential = await _auth.signInWithEmailAndPassword(
+      email: phone.authAlias,
+      password: password,
+    );
+    final ref = _db.collection('users').doc(credential.user!.uid);
+    if (!(await ref.get()).exists) throw StateError('profileMissing');
+    await ref.update({'preferredLanguage': language});
+    return credential;
   }
+
+  Future<Map<String, dynamic>?> findByPhone(PhoneIdentity phone) async {
+    final directory =
+        await _db.collection('phoneDirectory').doc(phone.directoryKey).get();
+    final uid = directory.data()?['uid'] as String?;
+    if (uid == null) return null;
+    final profile = await _db.collection('users').doc(uid).get();
+    if (!profile.exists) return null;
+    return {'uid': uid, ...profile.data()!};
+  }
+
+  Future<void> signOut() => _auth.signOut();
 }

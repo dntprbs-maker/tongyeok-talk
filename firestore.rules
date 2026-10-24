@@ -2,18 +2,39 @@ rules_version = '2';
 service cloud.firestore {
  match /databases/{database}/documents {
   function signed() { return request.auth != null; }
+  function validNumber(number) {
+   return number.matches('^(82(10[0-9]{8}|1[16789][0-9]{7,8}|2[0-9]{7,8}|[3-6][1-5][0-9]{7,8}|70[0-9]{8})|976[1-9][0-9]{7})$');
+  }
   function member(cid) { return signed() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(cid)).data.participants; }
-  // Public username directory only. Email and passwords stay in Firebase Auth.
+  // Names are readable by signed-in chat users; no global profile/phone listing.
   match /users/{uid} {
-   allow read: if true;
+   allow get: if signed();
    allow create: if signed() && request.auth.uid == uid
-    && request.resource.data.keys().hasOnly(['username','preferredLanguage','createdAt'])
-    && request.resource.data.username is string && request.resource.data.username.size() > 0 && request.resource.data.username.size() <= 40
-    && request.resource.data.preferredLanguage is string && request.resource.data.preferredLanguage.size() <= 40
+    && request.resource.data.keys().hasOnly(['displayName','preferredLanguage','createdAt'])
+    && request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 40
+    && request.resource.data.preferredLanguage in ['Korean','Mongolian']
     && request.resource.data.createdAt == request.time;
    allow update: if signed() && request.auth.uid == uid
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredLanguage'])
-    && request.resource.data.preferredLanguage is string && request.resource.data.preferredLanguage.size() <= 40;
+    && request.resource.data.preferredLanguage in ['Korean','Mongolian'];
+   match /private/contact {
+    allow get: if signed() && request.auth.uid == uid;
+    allow create, update: if signed() && request.auth.uid == uid
+     && request.resource.data.keys().hasOnly(['phoneE164','phoneVerified'])
+     && request.resource.data.phoneVerified == false
+     && request.resource.data.phoneE164 is string
+     && request.resource.data.phoneE164.matches('^\\+[0-9]+$')
+     && validNumber(request.resource.data.phoneE164.replace('\\+', ''))
+     && request.auth.token.email == 'p' + request.resource.data.phoneE164.replace('\\+', '') + '@phone.tongyeok.invalid';
+   }
+  }
+  match /phoneDirectory/{number} {
+   // Exact lookup only, using a number already known to the caller.
+   allow get: if signed();
+   allow create: if signed() && validNumber(number)
+    && request.auth.token.email == 'p' + number + '@phone.tongyeok.invalid'
+    && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid
+    && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName is string;
   }
   match /conversations/{cid} {
    allow read: if signed() && request.auth.uid in resource.data.participants;

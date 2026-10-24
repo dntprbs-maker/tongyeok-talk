@@ -1,119 +1,141 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'utils/languages.dart';
+import 'app_language.dart';
+import 'ui_errors.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({Key? key}) : super(key: key);
-
+  const SettingsScreen({super.key});
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _currentUser = FirebaseAuth.instance.currentUser!;
-  final _firestore = FirebaseFirestore.instance;
-  String _preferredLanguage = 'English';
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserSettings();
-  }
-
-  Future<void> _loadUserSettings() async {
-    setState(() => _isLoading = true);
+  String? _error;
+  bool _busy = false;
+  Future<void> _save() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      final doc =
-          await _firestore.collection('users').doc(_currentUser.uid).get();
-      if (doc.exists) {
-        final data = doc.data();
-        if (data != null && data['preferredLanguage'] != null) {
-          _preferredLanguage = data['preferredLanguage'];
-        }
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(FirebaseAuth.instance.currentUser!.uid)
+          .update({'preferredLanguage': AppLanguage.instance.profileLanguage});
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr(context, 'saved'))));
       }
     } catch (e) {
-      // Handle error if needed
+      if (mounted) setState(() => _error = errorKey(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    setState(() => _isLoading = false);
-  }
-
-  Future<void> _updateSettings() async {
-    setState(() => _isLoading = true);
-    try {
-      await _firestore.collection('users').doc(_currentUser.uid).update({
-        'preferredLanguage': _preferredLanguage,
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Settings updated!')));
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error updating settings: $e')));
-    }
-    setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.of(context).size;
-    final bool isMobile = screenSize.width < 600;
-
+    final uid = FirebaseAuth.instance.currentUser!.uid;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 20),
-                        Row(
-                          children: [
-                            const Text('Preferred Language: '),
-                            const SizedBox(width: 10),
-                            DropdownButton<String>(
-                              value: _preferredLanguage,
-                              items:
-                                  supportedLanguages.keys.map((langName) {
-                                    return DropdownMenuItem(
-                                      value: langName,
-                                      child: Text(langName),
-                                    );
-                                  }).toList(),
-                              onChanged: (val) {
-                                setState(() {
-                                  _preferredLanguage = val ?? 'English';
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 40),
-                        ElevatedButton(
-                          onPressed: _updateSettings,
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isMobile ? 20 : 30,
-                              vertical: isMobile ? 12 : 16,
-                            ),
-                          ),
-                          child: Text(
-                            'Save',
-                            style: TextStyle(fontSize: isMobile ? 14 : 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+      appBar: AppBar(title: Text(tr(context, 'settings'))),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text(
+                tr(context, 'language'),
+                style: Theme.of(context).textTheme.titleMedium,
               ),
+              const SizedBox(height: 12),
+              const LanguagePicker(),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: _busy ? null : _save,
+                child: Text(tr(context, 'save')),
+              ),
+              if (_error != null)
+                Text(
+                  tr(context, _error!),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              const Divider(height: 48),
+              Text(
+                tr(context, 'account'),
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 12),
+              FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                future:
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(uid)
+                        .get(),
+                builder: (context, snap) {
+                  if (snap.hasError) {
+                    return Text(tr(context, errorKey(snap.error!)));
+                  }
+                  final data = snap.data?.data();
+                  return Text(
+                    data?['displayName'] as String? ??
+                        data?['username'] as String? ??
+                        '',
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                future:
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(uid)
+                        .collection('private')
+                        .doc('contact')
+                        .get(),
+                builder: (context, snap) {
+                  if (snap.hasError) {
+                    return Text(tr(context, errorKey(snap.error!)));
+                  }
+                  final data = snap.data?.data();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (data != null)
+                        Text(data['phoneE164'] as String? ?? ''),
+                      const SizedBox(height: 8),
+                      Text(
+                        tr(
+                          context,
+                          data == null ? 'legacyAccount' : 'phoneUnverified',
+                        ),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.logout),
+                label: Text(tr(context, 'signOut')),
+                onPressed: () async {
+                  await FirebaseAuth.instance.signOut();
+                  if (context.mounted) {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/',
+                      (_) => false,
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

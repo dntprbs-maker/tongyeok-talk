@@ -1,93 +1,133 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'auth_screen.dart';
 import 'recent_conversations_screen.dart';
 import 'new_conversation_screen.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
+import 'app_language.dart';
+import 'brand.dart';
 
-void main() async {
+final _navigatorKey = GlobalKey<NavigatorState>();
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppLanguage.instance.initialize();
+  await initializeDateFormatting('ko');
+  await initializeDateFormatting('mn');
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  // Check if someone is already logged in.
-  final User? currentUser = await FirebaseAuth.instance.authStateChanges().first;
-
-  runApp(MyApp(isLoggedIn: currentUser != null));
+  var user = await FirebaseAuth.instance.authStateChanges().first;
+  if (user != null &&
+      !(await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get())
+          .exists) {
+    await FirebaseAuth.instance.signOut();
+    user = null;
+  }
+  runApp(MyApp(isLoggedIn: user != null));
 }
 
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
   const MyApp({super.key, required this.isLoggedIn});
-
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '통역톡 · 원문 채팅 시험판',
-      debugShowCheckedModeBanner: false,
-      // A cold deep link must wait for restored authentication and start safely.
-      onGenerateInitialRoutes: (_) => [MaterialPageRoute<void>(
-        settings: RouteSettings(name: isLoggedIn ? '/recentConversations' : '/'),
-        builder: (_) => isLoggedIn ? RecentConversationsScreen() : const HomeScreen())],
-      builder: (context, child) => Column(children:[
-        Material(color:const Color(0xFFFFF3CD),child:SafeArea(bottom:false,child:SizedBox(
-          width:double.infinity,child:Padding(padding:const EdgeInsets.all(8),child:Text(
-          '통역톡 시험판 · 현재는 원문 채팅만 가능해요. 자동번역은 준비 중입니다.',
-          style:const TextStyle(fontSize:12,color:Colors.black87),textAlign:TextAlign.center))))),
-        Expanded(child:child ?? const SizedBox()),
-      ]),
-      // If user is logged in, jump straight to recent conversations; else, show Home/Auth.
-      initialRoute: isLoggedIn ? '/recentConversations' : '/',
-      routes: {
-        '/': (context) => const HomeScreen(),
-        '/auth': (context) {
-          final bool? isSignUp =
-              ModalRoute.of(context)?.settings.arguments as bool?;
-          return AuthScreen(isSignUp: isSignUp ?? false);
-        },
-        '/recentConversations': (context) => RecentConversationsScreen(),
-        '/newConversation': (context) => const NewConversationScreen(),
-        '/settings': (context) => const SettingsScreen(),
-      },
-      theme: ThemeData(
-        brightness: Brightness.light,
-        primaryColor: const Color(0xFF4A90E2),
-        scaffoldBackgroundColor: Colors.white,
-        colorScheme: ColorScheme.fromSwatch(
-          primarySwatch: Colors.blue,
-        ).copyWith(secondary: const Color(0xFF50E3C2)),
-        textTheme: const TextTheme(
-          titleLarge: TextStyle(
-            fontFamily: 'Montserrat',
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
-          bodyMedium: TextStyle(fontFamily: 'OpenSans', fontSize: 16),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: Colors.black54),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: Color(0xFF4A90E2), width: 2),
-          ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+  Widget build(BuildContext context) => LanguageScope(
+    child: AnimatedBuilder(
+      animation: AppLanguage.instance,
+      builder:
+          (context, _) => MaterialApp(
+            navigatorKey: _navigatorKey,
+            title: AppLanguage.instance.text('app'),
+            debugShowCheckedModeBanner: false,
+            locale: Locale(AppLanguage.instance.code),
+            supportedLocales: const [Locale('ko'), Locale('mn')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
+            onGenerateInitialRoutes:
+                (_) => [
+                  MaterialPageRoute<void>(
+                    settings: RouteSettings(
+                      name: isLoggedIn ? '/recentConversations' : '/',
+                    ),
+                    builder:
+                        (_) =>
+                            isLoggedIn
+                                ? RecentConversationsScreen()
+                                : const HomeScreen(),
+                  ),
+                ],
+            initialRoute: isLoggedIn ? '/recentConversations' : '/',
+            routes: {
+              '/': (_) => const HomeScreen(),
+              '/auth':
+                  (context) => AuthScreen(
+                    isSignUp:
+                        ModalRoute.of(context)?.settings.arguments as bool? ??
+                        false,
+                  ),
+              '/recentConversations': (_) => RecentConversationsScreen(),
+              '/newConversation': (_) => const NewConversationScreen(),
+              '/settings': (_) => const SettingsScreen(),
+            },
+            builder:
+                (context, child) => Column(
+                  children: [
+                    Material(
+                      color: const Color(0xFFF0F2FC),
+                      child: SafeArea(
+                        bottom: false,
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            child: Text(
+                              tr(context, 'preview'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF414967),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(child: child ?? const SizedBox()),
+                  ],
+                ),
+            theme: ThemeData(
+              useMaterial3: true,
+              colorScheme: ColorScheme.fromSeed(seedColor: brandColor),
+              scaffoldBackgroundColor: Colors.white,
+              appBarTheme: const AppBarTheme(
+                backgroundColor: Colors.white,
+                surfaceTintColor: Colors.white,
+              ),
+              inputDecorationTheme: InputDecorationTheme(
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+              ),
+              filledButtonTheme: FilledButtonThemeData(
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 50)),
+              ),
+              outlinedButtonTheme: OutlinedButtonThemeData(
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 50)),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           ),
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }

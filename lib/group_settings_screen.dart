@@ -1,178 +1,132 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'app_language.dart';
+import 'ui_errors.dart';
 
 class GroupSettingsScreen extends StatefulWidget {
   final String conversationId;
-
-  const GroupSettingsScreen({Key? key, required this.conversationId})
-    : super(key: key);
-
+  const GroupSettingsScreen({super.key, required this.conversationId});
   @override
   State<GroupSettingsScreen> createState() => _GroupSettingsScreenState();
 }
 
 class _GroupSettingsScreenState extends State<GroupSettingsScreen> {
-  final _firestore = FirebaseFirestore.instance;
-  final _currentUser = FirebaseAuth.instance.currentUser!;
-  late TextEditingController _groupNameController;
-
-  List<Map<String, dynamic>> _participants = [];
-  bool _isLoading = true;
-
+  final _name = TextEditingController();
+  final _users = <String>[];
+  bool _loading = true, _busy = false;
+  String? _error;
   @override
   void initState() {
     super.initState();
-    _groupNameController = TextEditingController();
-    _loadGroupData();
-  }
-
-  Future<void> _loadGroupData() async {
-    final doc =
-        await _firestore
-            .collection('conversations')
-            .doc(widget.conversationId)
-            .get();
-
-    final data = doc.data();
-    if (data == null) return;
-
-    final groupName = data['groupName'] ?? '';
-    _groupNameController.text = groupName;
-
-    final participants = (data['participants'] as List).cast<String>();
-
-    final List<Map<String, dynamic>> users = [];
-    for (final uid in participants) {
-      final userDoc = await _firestore.collection('users').doc(uid).get();
-      if (userDoc.exists) {
-        users.add({
-          'uid': uid,
-          'username': userDoc.data()?['username'] ?? 'Unknown',
-        });
-      }
-    }
-
-    setState(() {
-      _participants = users;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _updateGroupName() async {
-    final newName = _groupNameController.text.trim();
-    if (newName.isEmpty) return;
-    await _firestore
-        .collection('conversations')
-        .doc(widget.conversationId)
-        .update({'groupName': newName});
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Group name updated')));
-  }
-
-  Future<void> _leaveGroup() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (_) => AlertDialog(
-            title: const Text('Leave Group'),
-            content: const Text(
-              'Are you sure you want to leave this group? You won’t receive future messages.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Leave'),
-              ),
-            ],
-          ),
-    );
-
-    if (confirm == true) {
-      await _firestore
-          .collection('conversations')
-          .doc(widget.conversationId)
-          .update({
-            'participants': FieldValue.arrayRemove([_currentUser.uid]),
-          });
-      if (!mounted) return;
-      Navigator.popUntil(context, ModalRoute.withName('/recentConversations'));
-    }
+    _load();
   }
 
   @override
   void dispose() {
-    _groupNameController.dispose();
+    _name.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 600;
+  Future<void> _load() async {
+    try {
+      final data =
+          (await FirebaseFirestore.instance
+                  .collection('conversations')
+                  .doc(widget.conversationId)
+                  .get())
+              .data()!;
+      _name.text = data['groupName'] as String? ?? '';
+      for (final uid in data['participants'] as List) {
+        final p =
+            (await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(uid as String)
+                    .get())
+                .data();
+        _users.add(
+          p?['displayName'] as String? ??
+              p?['username'] as String? ??
+              AppLanguage.instance.text('unknownUser'),
+        );
+      }
+    } catch (e) {
+      _error = errorKey(e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Group Settings')),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        TextField(
-                          controller: _groupNameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Group Name',
-                            border: OutlineInputBorder(),
-                          ),
-                          style: TextStyle(fontSize: isMobile ? 14 : 16),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _updateGroupName,
-                          child: const Text('Save Group Name'),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          'Participants',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: null,
-                          icon: const Icon(Icons.exit_to_app),
-                          label: const Text('Leave Group'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.redAccent,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: _participants.length,
-                            itemBuilder: (context, index) {
-                              final user = _participants[index];
-                              return ListTile(
-                                leading: const Icon(Icons.person_outline),
-                                title: Text(user['username']),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty || _name.text.trim().length > 100) {
+      setState(() => _error = 'groupNameInvalid');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .update({'groupName': _name.text.trim()});
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr(context, 'saved'))));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = errorKey(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(tr(context, 'groupSettings'))),
+    body:
+        _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    TextField(
+                      controller: _name,
+                      maxLength: 100,
+                      decoration: InputDecoration(
+                        labelText: tr(context, 'groupName'),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: _busy ? null : _save,
+                      child: Text(tr(context, 'save')),
+                    ),
+                    if (_error != null)
+                      Text(
+                        tr(context, _error!),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    const SizedBox(height: 28),
+                    Text(
+                      tr(context, 'participants'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    ..._users.map(
+                      (name) => ListTile(
+                        leading: const Icon(Icons.person_outline),
+                        title: Text(name),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-    );
-  }
+            ),
+  );
 }

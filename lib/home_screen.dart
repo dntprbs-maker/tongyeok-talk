@@ -1,146 +1,66 @@
 import 'package:flutter/material.dart';
+import 'app_language.dart';
+import 'brand.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
+  const HomeScreen({super.key});
   @override
-  Widget build(BuildContext context) {
-    final Size screenSize = MediaQuery.of(context).size;
-    final bool isMobile = screenSize.width < 600;
-
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6A82FB), Color(0xFFFC5C7D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Center(
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      24,
-                    ), // You can adjust the corner radius
-                    child: Image.asset(
-                      'assets/images/BridgeChat.png',
-                      width: isMobile ? 360 : 500,
-                      height: isMobile ? 210 : 300,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-
-                  const SizedBox(height: 24),
-                  Text(
-                    '통역톡',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: isMobile ? 32 : 48,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '원문 채팅 시험판입니다.\n자동번역 기능은 준비 중입니다.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: isMobile ? 16 : 20,
-                      color: Colors.white70,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 6,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24.0,
-                        vertical: 32.0,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  tr(context, 'language'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 10),
+                const LanguagePicker(),
+                const SizedBox(height: 40),
+                const BrandHeader(),
+                const SizedBox(height: 28),
+                Text(
+                  tr(context, 'welcome'),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  tr(context, 'intro'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(height: 1.6, color: Colors.black54),
+                ),
+                const SizedBox(height: 36),
+                FilledButton(
+                  onPressed:
+                      () => Navigator.pushNamed(
+                        context,
+                        '/auth',
+                        arguments: false,
                       ),
-                      child: Column(
-                        children: [
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.pushNamed(
-                                context,
-                                '/auth',
-                                arguments: false,
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(
-                                vertical: isMobile ? 12 : 16,
-                                horizontal: isMobile ? 16 : 24,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              'Sign In',
-                              style: TextStyle(
-                                fontSize: isMobile ? 16 : 20,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          OutlinedButton(
-                            onPressed: () {
-                              Navigator.pushNamed(
-                                context,
-                                '/auth',
-                                arguments: true,
-                              );
-                            },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Colors.deepPurpleAccent,
-                                width: 2,
-                              ),
-                              padding: EdgeInsets.symmetric(
-                                vertical: isMobile ? 12 : 16,
-                                horizontal: isMobile ? 16 : 24,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              'Sign Up',
-                              style: TextStyle(
-                                fontSize: isMobile ? 16 : 20,
-                                color: Colors.deepPurple,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                  child: Text(tr(context, 'signIn')),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed:
+                      () => Navigator.pushNamed(
+                        context,
+                        '/auth',
+                        arguments: true,
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-                ],
-              ),
+                  child: Text(tr(context, 'signUp')),
+                ),
+              ],
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
