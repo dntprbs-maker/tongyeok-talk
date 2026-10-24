@@ -43,7 +43,7 @@ class HomeScreen extends StatelessWidget {
 
                   const SizedBox(height: 24),
                   Text(
-                    'Welcome to BridgeChat',
+                    '통역톡',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: isMobile ? 32 : 48,
@@ -53,7 +53,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Real-time messaging with built-in translation.\nChat with anyone, anywhere.',
+                    '원문 채팅 시험판입니다.\n자동번역 기능은 준비 중입니다.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: isMobile ? 16 : 20,

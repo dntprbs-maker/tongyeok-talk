@@ -45879,8 +45879,8 @@ $S:322}
 A.v1.prototype={
 K(a){var s,r,q,p,o,n=null,m=A.bg(a,n,t.w).w.a.a<600,l=A.hk(24),k=m?360:500
 l=A.a4_(l,A.aHZ("assets/images/BridgeChat.png",B.n_,m?210:300,k),B.bK)
-k=A.bP("Welcome to BridgeChat",n,n,n,A.cp(n,n,B.k,n,n,n,n,n,n,n,n,m?32:48,n,n,B.cu,n,n,!0,n,n,n,n,n,n,n,n),B.da,n)
-s=A.bP("Real-time messaging with built-in translation.\nChat with anyone, anywhere.",n,n,n,A.cp(n,n,B.T,n,n,n,n,n,n,n,n,m?16:20,n,n,n,n,1.4,!0,n,n,n,n,n,n,n,n),B.da,n)
+k=A.bP("\ud1b5\uc5ed\ud1a1",n,n,n,A.cp(n,n,B.k,n,n,n,n,n,n,n,n,m?32:48,n,n,B.cu,n,n,!0,n,n,n,n,n,n,n,n),B.da,n)
+s=A.bP("\uc6d0\ubb38 \ucc44\ud305 \uc2dc\ud5d8\ud310\uc785\ub2c8\ub2e4.\n\uc790\ub3d9\ubc88\uc5ed \uae30\ub2a5\uc740 \uc900\ube44 \uc911\uc785\ub2c8\ub2e4.",n,n,n,A.cp(n,n,B.T,n,n,n,n,n,n,n,n,m?16:20,n,n,n,n,1.4,!0,n,n,n,n,n,n,n,n),B.da,n)
 r=A.hk(16)
 q=m?12:16
 p=m?16:24
