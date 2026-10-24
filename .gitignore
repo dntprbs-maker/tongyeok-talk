@@ -1,0 +1,9 @@
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+node_modules/
+.env*
+*.log
+.firebase/
+artifacts/
+credentials/
