@@ -24,6 +24,7 @@ Flutter stable SDK가 필요합니다.
 flutter pub get
 flutter run -d chrome
 flutter build web --base-href /tongyeok-talk/ --output docs
+python tools/version_web_assets.py
 ```
 
 이번 저장소에는 먼저 만든 별도 로컬 수정본, 디버깅폰 계정, 대화 내보내기 파일, 운영자 인증정보를 포함하지 않습니다.
