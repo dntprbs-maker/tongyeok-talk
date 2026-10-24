@@ -4,6 +4,17 @@ class PhoneIdentity {
   String get directoryKey => e164.substring(1);
   // Firebase's password credential transport. This is not the user's email.
   String get authAlias => 'p$directoryKey@phone.tongyeok.invalid';
+
+  /// Korea-only service entry point; language never changes phone identity.
+  /// The legacy parser remains available to preserve earlier test accounts.
+  static PhoneIdentity parseKorean(String input) {
+    final phone = parse(input);
+    if (!phone.e164.startsWith('+82')) {
+      throw const FormatException('phoneInvalid');
+    }
+    return phone;
+  }
+
   static PhoneIdentity parse(String input, {String defaultCountry = '82'}) {
     var value = input.trim().replaceAll(RegExp(r'[\s().-]'), '');
     if (value.startsWith('00')) value = '+${value.substring(2)}';

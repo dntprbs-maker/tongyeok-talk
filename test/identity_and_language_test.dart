@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:bridgechat/phone_identity.dart';
 import 'package:bridgechat/app_language.dart';
@@ -30,6 +31,15 @@ void main() {
       expect(() => PhoneIdentity.parse(value), throwsFormatException);
     }
   });
+  test('Korea-only entry accepts local and international Korean numbers', () {
+    expect(PhoneIdentity.parseKorean('010-1234-5678').e164, '+821012345678');
+    expect(PhoneIdentity.parseKorean('+82 10 1234 5678').e164, '+821012345678');
+    expect(
+      () => PhoneIdentity.parseKorean('+97699112233'),
+      throwsFormatException,
+    );
+    expect(() => PhoneIdentity.parseKorean('99112233'), throwsFormatException);
+  });
   test('Every UI key has both Korean and Mongolian text', () {
     for (final entry in messages.entries) {
       expect(entry.value.length, 2, reason: entry.key);
@@ -59,6 +69,12 @@ void main() {
     expect(find.text('Нэр'), findsOneWidget);
     expect(find.text('Утасны дугаар'), findsOneWidget);
     expect(find.text('Нууц үг'), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    await tester.enterText(
+      find.byKey(const ValueKey('auth-phone')),
+      '010-1234-5678',
+    );
+    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('auth-phone'))).controller!.text, '010-1234-5678');
     expect(find.text('Email'), findsNothing);
     expect(find.text('Username'), findsNothing);
     await AppLanguage.instance.initialize();

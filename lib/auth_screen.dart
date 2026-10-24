@@ -18,14 +18,12 @@ class _AuthScreenState extends State<AuthScreen> {
       _phone = TextEditingController(),
       _password = TextEditingController();
   late bool _signUp;
-  late String _country;
   bool _busy = false, _obscure = true;
   String? _error;
   @override
   void initState() {
     super.initState();
     _signUp = widget.isSignUp;
-    _country = AppLanguage.instance.code == 'mn' ? '976' : '82';
   }
 
   @override
@@ -43,7 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
       _error = null;
     });
     try {
-      final phone = PhoneIdentity.parse(_phone.text, defaultCountry: _country);
+      final phone = PhoneIdentity.parseKorean(_phone.text);
       final lang = AppLanguage.instance.profileLanguage;
       if (_signUp) {
         await AuthService().signUp(_name.text, phone, _password.text, lang);
@@ -108,26 +106,6 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    DropdownButtonFormField<String>(
-                      key: const ValueKey('phone-country'),
-                      initialValue: _country,
-                      decoration: InputDecoration(
-                        labelText: tr(context, 'country'),
-                      ),
-                      items: [
-                        DropdownMenuItem(
-                          value: '82',
-                          child: Text('+82 ${tr(context, 'korea')}'),
-                        ),
-                        DropdownMenuItem(
-                          value: '976',
-                          child: Text('+976 ${tr(context, 'mongolia')}'),
-                        ),
-                      ],
-                      onChanged:
-                          _busy ? null : (v) => setState(() => _country = v!),
-                    ),
-                    const SizedBox(height: 16),
                     TextFormField(
                       key: const ValueKey('auth-phone'),
                       controller: _phone,
@@ -137,16 +115,12 @@ class _AuthScreenState extends State<AuthScreen> {
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(
                         labelText: tr(context, 'phone'),
-                        hintText:
-                            _country == '82' ? '010-1234-5678' : '9911-2233',
+                        hintText: '010-1234-5678',
                         prefixIcon: const Icon(Icons.phone_outlined),
                       ),
                       validator: (v) {
                         try {
-                          PhoneIdentity.parse(
-                            v ?? '',
-                            defaultCountry: _country,
-                          );
+                          PhoneIdentity.parseKorean(v ?? '');
                           return null;
                         } catch (_) {
                           return tr(context, 'phoneInvalid');

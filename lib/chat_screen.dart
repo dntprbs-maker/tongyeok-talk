@@ -190,6 +190,16 @@ class ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   : Column(
                     children: [
                       _buildHeader(),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          tr(context, 'chatDeliveryNotice'),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                       Expanded(child: _buildMessagesStream()),
                       _buildMessageInput(),
                     ],

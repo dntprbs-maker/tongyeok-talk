@@ -17,15 +17,8 @@ class NewConversationScreen extends StatefulWidget {
 class _NewConversationScreenState extends State<NewConversationScreen> {
   final _phone = TextEditingController();
   final List<Map<String, dynamic>> _selected = [];
-  late String _country;
   bool _group = false, _busy = false;
   String? _error;
-  @override
-  void initState() {
-    super.initState();
-    _country = AppLanguage.instance.code == 'mn' ? '976' : '82';
-  }
-
   @override
   void dispose() {
     _phone.dispose();
@@ -48,7 +41,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         return;
       }
       final user = await AuthService().findByPhone(
-        PhoneIdentity.parse(_phone.text, defaultCountry: _country),
+        PhoneIdentity.parseKorean(_phone.text),
       );
       if (!mounted) return;
       if (user == null) {
@@ -144,22 +137,6 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
               onChanged: _busy ? null : (v) => setState(() => _group = v),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _country,
-              decoration: InputDecoration(labelText: tr(context, 'country')),
-              items: [
-                DropdownMenuItem(
-                  value: '82',
-                  child: Text('+82 ${tr(context, 'korea')}'),
-                ),
-                DropdownMenuItem(
-                  value: '976',
-                  child: Text('+976 ${tr(context, 'mongolia')}'),
-                ),
-              ],
-              onChanged: _busy ? null : (v) => setState(() => _country = v!),
-            ),
-            const SizedBox(height: 16),
             TextField(
               key: const ValueKey('search-phone'),
               controller: _phone,
@@ -168,6 +145,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
               onSubmitted: (_) => _find(),
               decoration: InputDecoration(
                 labelText: tr(context, 'searchPhone'),
+                hintText: '010-1234-5678',
                 helperText: tr(context, 'findPhoneHint'),
                 helperMaxLines: 2,
               ),
