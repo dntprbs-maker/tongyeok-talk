@@ -71,6 +71,8 @@ class LanguagePicker extends StatelessWidget {
 }
 
 const Map<String, List<String>> messages = {
+  'olderMessages': ['이전 대화 보기', 'Өмнөх зурвасуудыг харах'],
+  'historyRetry': ['이전 대화 다시 불러오기', 'Өмнөх зурвасуудыг дахин ачаалах'],
   'translationPending': [
     '번역 중이에요. 원문은 그대로 보여요.',
     'Орчуулж байна. Эх бичвэр харагдаж байна.',

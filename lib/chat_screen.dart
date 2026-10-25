@@ -9,6 +9,7 @@ import 'group_settings_screen.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
 import 'read_receipts.dart';
+import 'message_history.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -40,6 +41,8 @@ class ChatScreenState extends State<ChatScreen>
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _receiptSubscription;
   final Set<String> _retrying = {};
   ModalRoute<void>? _route;
+  late final MessageHistory _history;
+  String? _newestShown;
 
   @override
   void didChangeDependencies() {
@@ -90,6 +93,7 @@ class ChatScreenState extends State<ChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _history = MessageHistory(FirestoreMessageSource(widget.conversationId));
     _receiptSubscription = FirebaseFirestore.instance
         .collection('conversations')
         .doc(widget.conversationId)
@@ -119,6 +123,7 @@ class ChatScreenState extends State<ChatScreen>
     WidgetsBinding.instance.removeObserver(this);
     chatRouteObserver.unsubscribe(this);
     _receiptSubscription?.cancel();
+    _history.dispose();
     _scrollController.dispose();
     _messageController.dispose();
     super.dispose();
@@ -216,14 +221,25 @@ class ChatScreenState extends State<ChatScreen>
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom([int attempts = 5]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+      if (mounted && _scrollController.hasClients) {
+        _scrollController
+            .animateTo(
+              _scrollController.position.maxScrollExtent,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+            )
+            .then((_) {
+              // Variable-height bilingual bubbles refine the lazy list's extent
+              // after layout. Follow the refined end, without a permanent loop.
+              if (mounted &&
+                  attempts > 0 &&
+                  _scrollController.hasClients &&
+                  _scrollController.position.extentAfter > 2) {
+                _scrollToBottom(attempts - 1);
+              }
+            });
       }
     });
   }
@@ -318,28 +334,22 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   Widget _buildMessagesStream() {
-    return StreamBuilder<QuerySnapshot>(
-      stream:
-          FirebaseFirestore.instance
-              .collection('conversations')
-              .doc(widget.conversationId)
-              .collection('messages')
-              .orderBy('timestamp', descending: false)
-              .snapshots(),
-      builder: (ctx, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+    return AnimatedBuilder(
+      animation: _history,
+      builder: (ctx, _) {
+        if (!_history.ready) {
           return const SizedBox();
         }
-        if (snap.hasError) {
-          return Center(child: Text(tr(context, errorKey(snap.error!))));
+        if (_history.error != null && _history.messages.isEmpty) {
+          return Center(child: Text(tr(context, errorKey(_history.error!))));
         }
-        final docs = snap.data?.docs ?? [];
+        final docs = _history.messages;
         if (docs.isEmpty) {
           return Center(child: Text(tr(context, 'noMessages')));
         }
 
         for (final doc in docs) {
-          final value = (doc.data() as Map<String, dynamic>)['timestamp'];
+          final value = doc.data()?['timestamp'];
           if (!doc.metadata.hasPendingWrites &&
               value is Timestamp &&
               (_visibleThrough == null ||
@@ -352,7 +362,7 @@ class ChatScreenState extends State<ChatScreen>
         // Build local list
         _msgList =
             docs.map((doc) {
-              final data = doc.data() as Map<String, dynamic>;
+              final data = doc.data()!;
               final senderId = data['senderId'] ?? '';
               final originalText = data['originalText'] ?? '';
               final ts = data['timestamp'] as Timestamp?;
@@ -387,8 +397,17 @@ class ChatScreenState extends State<ChatScreen>
               };
             }).toList();
 
-        // Scroll to bottom on new messages
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+        // Older-page loads and translation/receipt updates must not yank the
+        // reader away from history. Follow new messages only near the bottom.
+        final newest = docs.last.id;
+        if (newest != _newestShown) {
+          final follow =
+              _newestShown == null ||
+              !_scrollController.hasClients ||
+              _scrollController.position.extentAfter < 100;
+          _newestShown = newest;
+          if (follow) _scrollToBottom();
+        }
 
         return Center(
           child: ConstrainedBox(
@@ -396,8 +415,32 @@ class ChatScreenState extends State<ChatScreen>
             child: ListView.builder(
               controller: _scrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              itemCount: _msgList.length,
-              itemBuilder: (ctx, index) {
+              itemCount: _msgList.length + 1,
+              itemBuilder: (ctx, position) {
+                if (position == 0) {
+                  return Center(
+                    child:
+                        _history.loadingOlder
+                            ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(),
+                            )
+                            : (_history.hasOlder || _history.pageError != null)
+                            ? TextButton(
+                              onPressed: _loadOlder,
+                              child: Text(
+                                tr(
+                                  context,
+                                  _history.pageError == null
+                                      ? 'olderMessages'
+                                      : 'historyRetry',
+                                ),
+                              ),
+                            )
+                            : const SizedBox(height: 8),
+                  );
+                }
+                final index = position - 1;
                 final msg = _msgList[index];
                 final dt = msg['timestamp'] as DateTime;
 
@@ -451,6 +494,28 @@ class ChatScreenState extends State<ChatScreen>
         );
       },
     );
+  }
+
+  Future<void> _loadOlder() async {
+    final oldExtent =
+        _scrollController.hasClients
+            ? _scrollController.position.maxScrollExtent
+            : 0.0;
+    final oldOffset =
+        _scrollController.hasClients ? _scrollController.offset : 0.0;
+    _history.retryGaps();
+    await _history.loadOlder();
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final p = _scrollController.position;
+      _scrollController.jumpTo(
+        (oldOffset + p.maxScrollExtent - oldExtent).clamp(
+          0.0,
+          p.maxScrollExtent,
+        ),
+      );
+    });
   }
 
   Widget _buildDayMarker(DateTime date) {

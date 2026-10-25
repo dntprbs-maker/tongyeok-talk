@@ -6,6 +6,7 @@ import 'app_language.dart';
 import 'ui_errors.dart';
 import 'read_receipts.dart';
 import 'notification_prompt.dart';
+import 'query_audit.dart';
 
 class RecentConversationsScreen extends StatefulWidget {
   const RecentConversationsScreen({super.key});
@@ -17,6 +18,8 @@ class RecentConversationsScreen extends StatefulWidget {
 class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   final currentUser = FirebaseAuth.instance.currentUser!;
   final _prompt = GlobalKey<NotificationPromptState>();
+  final _names = <String, Future<Map<String, dynamic>?>>{};
+  final _roomNames = <String, Future<String>>{};
   late final _profile =
       FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
   late final _rooms =
@@ -37,12 +40,14 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
     for (final uid in (data['participants'] as List).where(
       (id) => id != currentUser.uid,
     )) {
-      final profile =
-          (await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(uid as String)
-                  .get())
-              .data();
+      final profile = await _names.putIfAbsent(uid as String, () async {
+        auditQuery('profile_get');
+        return (await FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .get())
+            .data();
+      });
       names.add(
         profile?['displayName'] as String? ??
             profile?['username'] as String? ??
@@ -203,11 +208,22 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     sliver: SliverList.builder(
                       itemCount: snapshot.data!.docs.length,
+                      findChildIndexCallback: (key) {
+                        if (key is! ValueKey<String>) return null;
+                        final index = snapshot.data!.docs.indexWhere(
+                          (d) => d.id == key.value,
+                        );
+                        return index < 0 ? null : index;
+                      },
                       itemBuilder: (context, index) {
                         final room = snapshot.data!.docs[index],
                             data = room.data();
                         return FutureBuilder<String>(
-                          future: _displayName(data),
+                          key: ValueKey(room.id),
+                          future: _roomNames.putIfAbsent(
+                            '${room.id}/${data['groupName']}/${data['participants']}/${AppLanguage.instance.code}',
+                            () => _displayName(data),
+                          ),
                           builder: (context, name) {
                             final label =
                                 name.data ?? tr(context, 'unknownUser');
@@ -224,9 +240,12 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                                   vertical: 12,
                                 ),
                                 leading: UnreadAvatar(
+                                  key: ValueKey('unread-${room.id}'),
                                   conversationId: room.id,
                                   uid: currentUser.uid,
                                   group: data['isGroup'] == true,
+                                  messageRevision:
+                                      data['timestamp'] as Timestamp?,
                                 ),
                                 title: Text(
                                   label,
