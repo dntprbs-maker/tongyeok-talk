@@ -265,16 +265,6 @@ class ChatScreenState extends State<ChatScreen>
                   : Column(
                     children: [
                       _buildHeader(),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          tr(context, 'chatDeliveryNotice'),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
                       Expanded(child: _buildMessagesStream()),
                       _buildMessageInput(),
                     ],
@@ -297,7 +287,7 @@ class ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 2.0),
       child: Row(
         children: [
           IconButton(
@@ -311,6 +301,20 @@ class ChatScreenState extends State<ChatScreen>
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          IconButton(
+            tooltip: tr(context, 'preview'),
+            icon: const Icon(Icons.info_outline, size: 21),
+            onPressed:
+                () => showDialog<void>(
+                  context: context,
+                  builder:
+                      (context) => AlertDialog(
+                        content: Text(
+                          '${tr(context, 'preview')}\n\n${tr(context, 'chatDeliveryNotice')}',
+                        ),
+                      ),
+                ),
           ),
           if (_isGroupChat)
             IconButton(
@@ -524,7 +528,7 @@ class ChatScreenState extends State<ChatScreen>
       AppLanguage.instance.code,
     ).format(date);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
@@ -534,7 +538,7 @@ class ChatScreenState extends State<ChatScreen>
           ),
           child: Text(
             dayString,
-            style: const TextStyle(fontSize: 14, color: Colors.black54),
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
           ),
         ),
       ),
@@ -554,15 +558,33 @@ class ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
       child: Row(
         children: [
           Expanded(
             child: TextField(
               controller: _messageController,
               minLines: 1,
-              maxLines: 5,
-              decoration: InputDecoration(labelText: tr(context, 'message')),
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: tr(context, 'message'),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+              ),
+              style: const TextStyle(fontSize: 15),
+              buildCounter:
+                  (
+                    context, {
+                    required currentLength,
+                    required isFocused,
+                    required maxLength,
+                  }) =>
+                      currentLength >= 1800
+                          ? Text('$currentLength/$maxLength')
+                          : null,
               maxLength: 2000,
               enabled: !_sending,
               onTap: _scrollToBottom,

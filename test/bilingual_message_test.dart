@@ -6,7 +6,10 @@ import 'package:bridgechat/message_bubble.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
-  setUpAll(() async { await initializeDateFormatting('ko'); await initializeDateFormatting('mn'); });
+  setUpAll(() async {
+    await initializeDateFormatting('ko');
+    await initializeDateFormatting('mn');
+  });
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await AppLanguage.instance.initialize();
@@ -39,8 +42,14 @@ void main() {
         await t.pumpWidget(bubble(source: source));
         await t.pumpAndSettle();
         expect(
-          t.getTopLeft(find.text('청소해 주세요')).dy,
-          lessThan(t.getTopLeft(find.text('Цэвэрлээрэй')).dy),
+          t.getTopLeft(find.textContaining('청소해 주세요', findRichText: true)).dy,
+          lessThan(
+            t
+                .getTopLeft(
+                  find.textContaining('Цэвэрлээрэй', findRichText: true),
+                )
+                .dy,
+          ),
         );
       }
     },
@@ -52,8 +61,10 @@ void main() {
     await t.pumpWidget(bubble());
     await t.pumpAndSettle();
     expect(
-      t.getTopLeft(find.text('Цэвэрлээрэй')).dy,
-      lessThan(t.getTopLeft(find.text('청소해 주세요')).dy),
+      t.getTopLeft(find.textContaining('Цэвэрлээрэй', findRichText: true)).dy,
+      lessThan(
+        t.getTopLeft(find.textContaining('청소해 주세요', findRichText: true)).dy,
+      ),
     );
   });
   testWidgets('failed translation retains original and invokes retry', (
@@ -62,7 +73,7 @@ void main() {
     var calls = 0;
     await t.pumpWidget(bubble(status: 'failed', retry: () => calls++));
     await t.pumpAndSettle();
-    expect(find.text('청소해 주세요'), findsOneWidget);
+    expect(find.textContaining('청소해 주세요', findRichText: true), findsOneWidget);
     await t.tap(find.text('번역 다시 시도'));
     expect(calls, 1);
   });

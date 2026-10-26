@@ -34,25 +34,30 @@ class MessageBubble extends StatelessWidget {
       values[targetLang!] = translatedText;
     }
     final color = mine ? Colors.white : Colors.black87;
-    Widget line(String language) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '${tr(context, language)}${language == sourceLang ? ' · ${tr(context, 'original')}' : ''}',
-          style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.75)),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          values[language] ??
-              tr(
-                context,
-                translationStatus == 'failed'
-                    ? 'translationFailed'
-                    : 'translationPending',
-              ),
-          style: TextStyle(fontSize: 16, height: 1.4, color: color),
-        ),
-      ],
+    Widget line(String language) => Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text:
+                '${tr(context, language)}${language == sourceLang ? ' · ${tr(context, 'original')}' : ''}  ',
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withValues(alpha: 0.75),
+            ),
+          ),
+          TextSpan(
+            text:
+                values[language] ??
+                tr(
+                  context,
+                  translationStatus == 'failed'
+                      ? 'translationFailed'
+                      : 'translationPending',
+                ),
+          ),
+        ],
+      ),
+      style: TextStyle(fontSize: 15, height: 1.25, color: color),
     );
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -60,21 +65,25 @@ class MessageBubble extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth:
               MediaQuery.sizeOf(context).width < 600
-                  ? MediaQuery.sizeOf(context).width * 0.84
+                  ? MediaQuery.sizeOf(context).width * 0.90
                   : 500,
         ),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
             color: mine ? const Color(0xFF5268D8) : const Color(0xFFF1F1F1),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(13),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               line(primary),
-              const Divider(),
+              Divider(
+                height: 9,
+                thickness: 0.5,
+                color: color.withValues(alpha: 0.25),
+              ),
               line(secondary),
               if (translationStatus != 'done' && onRetry != null)
                 TextButton(
@@ -82,7 +91,7 @@ class MessageBubble extends StatelessWidget {
                   style: TextButton.styleFrom(foregroundColor: color),
                   child: Text(tr(context, 'retryTranslation')),
                 ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 3),
               Text(
                 '${DateFormat.Hm(AppLanguage.instance.code).format(timestamp)}${mine ? ' · ${tr(context, !sent
                         ? 'sending'
@@ -90,7 +99,7 @@ class MessageBubble extends StatelessWidget {
                         ? 'read'
                         : 'sent')}' : ''}',
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   color: color.withValues(alpha: 0.75),
                 ),
               ),

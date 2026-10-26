@@ -9,6 +9,7 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   exclude:
+    - artifacts/** # Preserved verification snapshots, not application sources.
     - build/**
     - web/**
 include: package:flutter_lints/flutter.yaml
