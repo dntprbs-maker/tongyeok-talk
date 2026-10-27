@@ -156,7 +156,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                   Padding(
                     padding: const EdgeInsets.only(top: 2, left: 3, right: 3),
                     child: Text(
-                      '${DateFormat.Hm(primary).format(widget.timestamp)}${mine ? ' · ${tr(context, !widget.sent
+                      '${DateFormat('yyyy.MM.dd HH:mm', primary).format(widget.timestamp)}${mine ? ' · ${tr(context, !widget.sent
                               ? 'sending'
                               : widget.read
                               ? 'read'
@@ -168,17 +168,32 @@ class _MessageBubbleState extends State<MessageBubble> {
                     ),
                   ),
                   if (!always && primaryReady)
-                    TextButton(
+                    OutlinedButton.icon(
                       onPressed: () => setState(() => _expanded = !_expanded),
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF405671),
-                        padding: const EdgeInsets.symmetric(vertical: 6),
+                      icon: Icon(
+                        _expanded ? Icons.expand_less : Icons.expand_more,
+                        size: 18,
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF273F60),
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFF6B819D)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         minimumSize: const Size(48, 32),
                         tapTargetSize: MaterialTapTargetSize.padded,
                         alignment: Alignment.centerLeft,
-                        textStyle: const TextStyle(fontSize: 11),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      child: Text(
+                      label: Text(
                         tr(
                           context,
                           _expanded
