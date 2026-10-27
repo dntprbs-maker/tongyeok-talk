@@ -12,19 +12,51 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   String? _error;
   bool _busy = false;
   String _push = 'off';
+  bool _pushLoading = true;
   @override
   void initState() {
     super.initState();
-    PushService.state().then((value) {
-      if (mounted) setState(() => _push = value);
-    });
+    WidgetsBinding.instance.addObserver(this);
+    _readPush();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_busy) _readPush();
+  }
+
+  Future<void> _readPush() async {
+    try {
+      final value = await PushService.state();
+      if (mounted) {
+        setState(() {
+          _push = value;
+          _pushLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _pushLoading = false;
+          _error = 'pushFailed';
+        });
+      }
+    }
   }
 
   Future<void> _togglePush() async {
+    if (_busy || _pushLoading) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -103,20 +135,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 8),
               Text(tr(context, 'pushTrial')),
               const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _togglePush,
-                icon: Icon(
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(tr(context, 'pushReception')),
+                subtitle: Text(tr(context, 'pushDeviceOnly')),
+                secondary: Icon(
                   _push == 'enabled'
                       ? Icons.notifications_active
-                      : Icons.notifications_none,
+                      : Icons.notifications_off_outlined,
                 ),
-                label: Text(
-                  tr(
-                    context,
-                    _push == 'enabled' ? 'pushDisable' : 'pushEnable',
-                  ),
-                ),
+                value: _push == 'enabled',
+                onChanged:
+                    _busy || _pushLoading || _push == 'unsupported'
+                        ? null
+                        : (_) => _togglePush(),
               ),
+              if (_busy || _pushLoading) const LinearProgressIndicator(),
               Text(
                 tr(
                   context,
