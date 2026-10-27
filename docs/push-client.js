@@ -1,4 +1,5 @@
 (() => {
+  window.tongyeokAppleMobile = /iPad|iPhone|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const base = new URL('./', document.baseURI);
   const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !!window.TONGYEOK_PUSH_PUBLIC_KEY;
   const ownerKey = 'tongyeok.pushOwner', deviceKey = 'tongyeok.pushDevice';

@@ -12,3 +12,7 @@ Future<String> disablePush(String uid) async =>
     (await _disable(uid.toJS).toDart).toDart;
 Future<String> pushState(String uid) async =>
     (await _state(uid.toJS).toDart).toDart;
+
+@JS('tongyeokAppleMobile')
+external JSBoolean get _appleMobile;
+bool get appleMobile => _appleMobile.toDart;

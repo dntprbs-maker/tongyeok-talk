@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
 import 'push_service.dart';
+import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -63,6 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     });
     try {
       if (_push == 'enabled') {
+        if (platform.appleMobile) return;
         await PushService.disable();
         if (mounted) setState(() => _push = 'off');
       } else {
@@ -135,21 +137,28 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: 8),
               Text(tr(context, 'pushTrial')),
               const SizedBox(height: 12),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(tr(context, 'pushReception')),
-                subtitle: Text(tr(context, 'pushDeviceOnly')),
-                secondary: Icon(
-                  _push == 'enabled'
-                      ? Icons.notifications_active
-                      : Icons.notifications_off_outlined,
+              if (platform.appleMobile)
+                ApplePushEnableControl(
+                  status: _push,
+                  busy: _busy || _pushLoading,
+                  onEnable: _togglePush,
+                )
+              else
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(tr(context, 'pushReception')),
+                  subtitle: Text(tr(context, 'pushDeviceOnly')),
+                  secondary: Icon(
+                    _push == 'enabled'
+                        ? Icons.notifications_active
+                        : Icons.notifications_off_outlined,
+                  ),
+                  value: _push == 'enabled',
+                  onChanged:
+                      _busy || _pushLoading || _push == 'unsupported'
+                          ? null
+                          : (_) => _togglePush(),
                 ),
-                value: _push == 'enabled',
-                onChanged:
-                    _busy || _pushLoading || _push == 'unsupported'
-                        ? null
-                        : (_) => _togglePush(),
-              ),
               if (_busy || _pushLoading) const LinearProgressIndicator(),
               Text(
                 tr(
@@ -240,4 +249,39 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
   }
+}
+
+/// iPhone/iPad offers enabling only; permission remains under iOS control.
+class ApplePushEnableControl extends StatelessWidget {
+  final String status;
+  final bool busy;
+  final VoidCallback onEnable;
+  const ApplePushEnableControl({
+    super.key,
+    required this.status,
+    required this.busy,
+    required this.onEnable,
+  });
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(tr(context, 'applePushHelp')),
+      const SizedBox(height: 12),
+      FilledButton.icon(
+        onPressed:
+            busy || status == 'enabled' || status == 'unsupported'
+                ? null
+                : onEnable,
+        icon: Icon(
+          status == 'enabled'
+              ? Icons.check_circle_outline
+              : Icons.notifications_active_outlined,
+        ),
+        label: Text(
+          tr(context, status == 'enabled' ? 'pushEnabled' : 'pushEnable'),
+        ),
+      ),
+    ],
+  );
 }

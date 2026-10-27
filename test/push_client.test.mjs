@@ -17,3 +17,17 @@ test('push enabled state survives reload and explicit disable removes subscripti
  assert.equal(await context.window.tongyeokPushState('developer'),'off');
  notification.permission='denied';assert.equal(await context.window.tongyeokPushState('developer'),'denied');
 });
+
+test('Apple mobile detection includes desktop-mode iPad but excludes desktop Mac and Android',()=>{
+ for(const [navigator,expected] of [
+  [{userAgent:'iPhone',platform:'iPhone',maxTouchPoints:5},true],
+  [{userAgent:'iPad',platform:'iPad',maxTouchPoints:5},true],
+  [{userAgent:'Macintosh',platform:'MacIntel',maxTouchPoints:5},true],
+  [{userAgent:'Macintosh',platform:'MacIntel',maxTouchPoints:0},false],
+  [{userAgent:'Android',platform:'Linux',maxTouchPoints:5},false],
+ ]){
+  const c={window:{},navigator,document:{baseURI:'https://example.com/'},URL};
+  vm.runInNewContext(readFileSync('web/push-client.js','utf8'),c);
+  assert.equal(c.window.tongyeokAppleMobile,expected);
+ }
+});
