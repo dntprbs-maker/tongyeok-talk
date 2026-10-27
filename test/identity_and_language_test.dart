@@ -66,7 +66,7 @@ void main() {
     await tester.ensureVisible(find.text('Бүртгүүлэх'));
     await tester.tap(find.text('Бүртгүүлэх'));
     await tester.pumpAndSettle();
-    expect(find.text('Нэр'), findsOneWidget);
+    expect(find.text('Хоч нэр'), findsOneWidget);
     expect(find.text('Утасны дугаар'), findsOneWidget);
     expect(find.text('Нууц үг'), findsOneWidget);
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
@@ -81,9 +81,13 @@ void main() {
     expect(AppLanguage.instance.code, 'mn');
     await tester.tap(find.text('한국어'));
     await tester.pumpAndSettle();
-    expect(find.text('이름'), findsOneWidget);
+    expect(find.text('닉네임'), findsOneWidget);
     expect(find.text('전화번호'), findsOneWidget);
     expect(find.text('비밀번호'), findsOneWidget);
+    final passwordField = tester.widget<TextFormField>(find.byKey(const ValueKey('auth-password')));
+    expect(passwordField.validator!('1234'), messages['passwordShort']![0]);
+    expect(passwordField.validator!('12345'), messages['passwordShort']![0]);
+    expect(passwordField.validator!('123456'), isNull);
     expect(tester.takeException(), isNull);
   });
 }

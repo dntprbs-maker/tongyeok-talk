@@ -89,7 +89,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         controller: _name,
                         enabled: !_busy,
                         textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.name],
+                        autofillHints: const [AutofillHints.nickname],
                         maxLength: 40,
                         decoration: InputDecoration(
                           labelText: tr(context, 'name'),
@@ -159,7 +159,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           (v) =>
                               v == null || v.isEmpty
                                   ? tr(context, 'passwordRequired')
-                                  : (_signUp && v.length < 8
+                                  : (_signUp && v.length < 6
                                       ? tr(context, 'passwordShort')
                                       : null),
                     ),
