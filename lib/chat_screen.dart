@@ -253,7 +253,7 @@ class ChatScreenState extends State<ChatScreen>
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFE3F2FD), Color(0xFFF1F8E9)],
+            colors: [Color(0xFFE4EBF3), Color(0xFFE4EBF3)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -464,6 +464,7 @@ class ChatScreenState extends State<ChatScreen>
                 }
 
                 final bubble = MessageBubble(
+                  key: ValueKey(msg['id']),
                   senderId: msg['senderId'] as String,
                   currentUserId: _currentUser.uid,
                   originalText: msg['originalText'] as String,

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
 import 'push_service.dart';
+import 'chat_display_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -92,7 +93,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   tr(context, _error!),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
-              const Divider(height: 48),
+              const Divider(height: 32),
+              const ChatDisplaySettings(),
+              const Divider(height: 32),
               Text(
                 tr(context, 'pushTitle'),
                 style: Theme.of(context).textTheme.titleMedium,

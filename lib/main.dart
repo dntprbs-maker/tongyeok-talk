@@ -13,11 +13,13 @@ import 'settings_screen.dart';
 import 'app_language.dart';
 import 'brand.dart';
 import 'read_receipts.dart';
+import 'chat_display_preferences.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppLanguage.instance.initialize();
+  await ChatDisplayPreferences.instance.initialize();
   await initializeDateFormatting('ko');
   await initializeDateFormatting('mn');
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
