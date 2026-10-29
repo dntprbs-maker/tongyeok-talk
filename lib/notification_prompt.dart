@@ -4,7 +4,15 @@ import 'push_service.dart';
 
 class NotificationPrompt extends StatefulWidget {
   final Future<String> Function()? readState, enable;
-  const NotificationPrompt({super.key, this.readState, this.enable});
+  final VoidCallback? onOpenSettings;
+  final bool iconOnly;
+  const NotificationPrompt({
+    super.key,
+    this.readState,
+    this.enable,
+    this.iconOnly = false,
+    this.onOpenSettings,
+  });
   @override
   State<NotificationPrompt> createState() => NotificationPromptState();
 }
@@ -91,6 +99,24 @@ class NotificationPromptState extends State<NotificationPrompt>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.iconOnly) {
+      final enabled = _status == 'enabled';
+      return IconButton(
+        tooltip:
+            '${tr(context, 'pushTitle')} · ${tr(context, enabled ? 'pushEnabled' : 'pushOff')}',
+        onPressed: widget.onOpenSettings,
+        icon: Badge(
+          isLabelVisible: _status != null && !enabled,
+          smallSize: 7,
+          backgroundColor: const Color(0xFFD92C40),
+          child: Icon(
+            enabled
+                ? Icons.notifications_outlined
+                : Icons.notifications_off_outlined,
+          ),
+        ),
+      );
+    }
     if (_status == null ||
         _status == 'enabled' ||
         _status == 'unsupported' ||

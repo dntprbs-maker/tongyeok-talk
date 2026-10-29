@@ -7,6 +7,8 @@ import 'ui_errors.dart';
 import 'read_receipts.dart';
 import 'notification_prompt.dart';
 import 'query_audit.dart';
+import 'settings_screen.dart';
+import 'package:intl/intl.dart';
 
 class RecentConversationsScreen extends StatefulWidget {
   const RecentConversationsScreen({super.key});
@@ -20,8 +22,6 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   final _prompt = GlobalKey<NotificationPromptState>();
   final _names = <String, Future<Map<String, dynamic>?>>{};
   final _roomNames = <String, Future<String>>{};
-  late final _profile =
-      FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
   late final _rooms =
       FirebaseFirestore.instance
           .collection('conversations')
@@ -61,54 +61,39 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F6FB),
+    backgroundColor: Colors.white,
     appBar: AppBar(
-      backgroundColor: const Color(0xFFF5F6FB),
-      title: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.asset(
-              'assets/images/interpreter-talk.png',
-              width: 34,
-              height: 34,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            tr(context, 'app'),
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-        ],
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      title: Text(
+        tr(context, 'chats'),
+        style: const TextStyle(fontWeight: FontWeight.w800),
       ),
       actions: [
+        IconButton(
+          tooltip: tr(context, 'findPeople'),
+          icon: const Icon(Icons.search),
+          onPressed: () => _open('/newConversation'),
+        ),
+        NotificationPrompt(
+          key: _prompt,
+          iconOnly: true,
+          onOpenSettings: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => const SettingsScreen(showNotifications: true),
+              ),
+            );
+            _prompt.currentState?.refresh();
+          },
+        ),
         IconButton(
           tooltip: tr(context, 'settings'),
           icon: const Icon(Icons.settings_outlined),
           onPressed: () => _open('/settings'),
         ),
-      ],
-    ),
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: 0,
-      onDestinationSelected: (index) {
-        if (index == 1) _open('/newConversation');
-        if (index == 2) _open('/settings');
-      },
-      destinations: [
-        NavigationDestination(
-          icon: const Icon(Icons.chat_bubble_outline),
-          selectedIcon: const Icon(Icons.chat_bubble),
-          label: tr(context, 'chats'),
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.person_search_outlined),
-          label: tr(context, 'findPeople'),
-        ),
-        NavigationDestination(
-          icon: const Icon(Icons.settings_outlined),
-          label: tr(context, 'settings'),
-        ),
+        const SizedBox(width: 8),
       ],
     ),
     body: SafeArea(
@@ -118,39 +103,6 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
           constraints: const BoxConstraints(maxWidth: 700),
           child: CustomScrollView(
             slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-                sliver: SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                        future: _profile,
-                        builder: (context, snapshot) {
-                          final data = snapshot.data?.data();
-                          return ConversationHomeHeading(
-                            displayName:
-                                data?['displayName'] as String? ??
-                                data?['username'] as String? ??
-                                '',
-                            onNewChat: () => _open('/newConversation'),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      NotificationPrompt(key: _prompt),
-                      Text(
-                        tr(context, 'myConversations'),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                  ),
-                ),
-              ),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _rooms,
                 builder: (context, snapshot) {
@@ -205,7 +157,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                     );
                   }
                   return SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverList.builder(
                       itemCount: snapshot.data!.docs.length,
                       findChildIndexCallback: (key) {
@@ -227,22 +179,22 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                           builder: (context, name) {
                             final label =
                                 name.data ?? tr(context, 'unknownUser');
-                            return Card(
-                              color: Colors.white,
-                              elevation: 0,
-                              margin: const EdgeInsets.only(bottom: 10),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
+                            return Container(
+                              decoration: const BoxDecoration(
+                                border: Border(
+                                  bottom: BorderSide(color: Color(0xFFF0F1F4)),
+                                ),
                               ),
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 12,
+                                  horizontal: 0,
+                                  vertical: 10,
                                 ),
                                 leading: UnreadAvatar(
                                   key: ValueKey('unread-${room.id}'),
                                   conversationId: room.id,
                                   uid: currentUser.uid,
+                                  displayName: label,
                                   group: data['isGroup'] == true,
                                   messageRevision:
                                       data['timestamp'] as Timestamp?,
@@ -263,11 +215,23 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                trailing: const Icon(
-                                  Icons.chevron_right,
-                                  size: 20,
-                                  color: Color(0xFF9BA0B4),
-                                ),
+                                trailing:
+                                    data['timestamp'] is Timestamp
+                                        ? Text(
+                                          DateFormat(
+                                            'MM.dd HH:mm',
+                                            AppLanguage.instance.code,
+                                          ).format(
+                                            (data['timestamp'] as Timestamp)
+                                                .toDate()
+                                                .toLocal(),
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF757D8B),
+                                          ),
+                                        )
+                                        : null,
                                 onTap:
                                     () => Navigator.push(
                                       context,

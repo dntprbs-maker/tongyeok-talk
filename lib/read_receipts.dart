@@ -30,6 +30,7 @@ class ReadReceipts {
 class UnreadAvatar extends StatefulWidget {
   final String conversationId, uid;
   final bool group;
+  final String? displayName;
   final Timestamp? messageRevision;
   final Stream<Timestamp?>? receiptStream;
   final Future<int> Function(Timestamp?)? countLoader;
@@ -38,6 +39,7 @@ class UnreadAvatar extends StatefulWidget {
     required this.conversationId,
     required this.uid,
     required this.group,
+    this.displayName,
     this.messageRevision,
     this.receiptStream,
     this.countLoader,
@@ -162,13 +164,23 @@ class _UnreadAvatarState extends State<UnreadAvatar>
               ),
             ),
           )
-          : UnreadBadge(count: _count, group: widget.group);
+          : UnreadBadge(
+            count: _count,
+            group: widget.group,
+            displayName: widget.displayName,
+          );
 }
 
 class UnreadBadge extends StatelessWidget {
   final int count;
   final bool group;
-  const UnreadBadge({super.key, required this.count, this.group = false});
+  final String? displayName;
+  const UnreadBadge({
+    super.key,
+    required this.count,
+    this.group = false,
+    this.displayName,
+  });
   @override
   Widget build(BuildContext context) => Semantics(
     label: tr(context, 'unreadCount', {'count': '$count'}),
@@ -178,7 +190,16 @@ class UnreadBadge extends StatelessWidget {
       backgroundColor: const Color(0xFFD92C40),
       textColor: Colors.white,
       child: CircleAvatar(
-        child: Icon(group ? Icons.group_outlined : Icons.person_outline),
+        backgroundColor:
+            group ? const Color(0xFFECE8FF) : const Color(0xFFE2EFFF),
+        foregroundColor: const Color(0xFF3346B8),
+        child:
+            !group && displayName != null && displayName!.isNotEmpty
+                ? Text(
+                  displayName!.characters.first,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                )
+                : Icon(group ? Icons.group_outlined : Icons.person_outline),
       ),
     ),
   );
