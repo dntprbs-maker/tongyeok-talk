@@ -189,6 +189,14 @@ const Map<String, List<String>> messages = {
     'Үйлдэл амжилтгүй. Түр хүлээгээд дахин оролдоно уу.',
   ],
   'alreadyAccount': ['이미 가입했나요? 로그인', 'Бүртгэлтэй юу? Нэвтрэх'],
+  'googleSignIn': ['Google로 계속하기', 'Google-ээр үргэлжлүүлэх'],
+  'appleSignIn': ['Apple로 계속하기', 'Apple-аар үргэлжлүүлэх'],
+  'phoneAccount': ['전화번호 계정 사용', 'Утасны дугаараар нэвтрэх'],
+  'socialDefaultName': ['통역톡 사용자', 'ТунъёкТок хэрэглэгч'],
+  'socialLoginError': [
+    '로그인을 완료하지 못했습니다. 다시 시도해 주세요.',
+    'Нэвтэрч чадсангүй. Дахин оролдоно уу.',
+  ],
   'newAccount': ['처음인가요? 회원가입', 'Шинээр бүртгүүлэх'],
   'unreadCount': ['읽지 않은 메시지 {count}개', 'Уншаагүй {count} зурвас'],
   'unreadError': [

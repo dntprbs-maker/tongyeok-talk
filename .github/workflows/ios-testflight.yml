@@ -21,17 +21,38 @@ jobs:
           test "$(git -C "$RUNNER_TEMP/flutter" rev-parse HEAD)" = 737ba8f885dc774b53b442759999a312c9461e4e
           echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
       - name: Prepare and test application
+        env:
+          GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
         run: |
+          set -euo pipefail
+          [[ "$GOOGLE_IOS_CLIENT_ID" =~ ^[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$ ]]
           flutter create --platforms=ios --org com --project-name tongyeoktalk "$RUNNER_TEMP/tongyeok-app"
           cd "$RUNNER_TEMP/tongyeok-app"
-          cp "$GITHUB_WORKSPACE/lib/main_web_shell.dart" "$GITHUB_WORKSPACE/lib/mobile_web_navigation.dart" "$GITHUB_WORKSPACE/lib/ios_reward_ad_probe.dart" lib/
-          python3 -c 'from pathlib import Path; p=Path("pubspec.yaml"); s=p.read_text().replace("  flutter:\n    sdk: flutter\n", "  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n", 1); p.write_text(s)'
-          flutter pub add webview_flutter:4.14.1
-          python3 -c 'from pathlib import Path; p=Path("lib/main_web_shell.dart"); s=p.read_text(); old="      if (iosAdProbeEnabled && !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)\n        const Align(alignment: Alignment.bottomCenter, child: IosRewardAdProbe()),\n"; assert old in s; s=s.replace(old, "").replace("import '\''ios_reward_ad_probe.dart'\'';\n", ""); p.write_text(s)'
-          /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName 통역톡' ios/Runner/Info.plist
-          mkdir -p test
-          sed 's/package:bridgechat/package:tongyeoktalk/g' "$GITHUB_WORKSPACE/test/mobile_web_navigation_test.dart" > test/mobile_web_navigation_test.dart
-          flutter test test/mobile_web_navigation_test.dart
+          rm test/widget_test.dart
+          cp "$GITHUB_WORKSPACE/pubspec.yaml" "$GITHUB_WORKSPACE/pubspec.lock" .
+          cp -R "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/lib" "$GITHUB_WORKSPACE/test" .
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          client_id = os.environ["GOOGLE_IOS_CLIENT_ID"]
+          path = Path("ios/Runner/Info.plist")
+          with path.open("rb") as file:
+              info = plistlib.load(file)
+          info["CFBundleDisplayName"] = "통역톡"
+          info["GIDClientID"] = client_id
+          info.setdefault("CFBundleURLTypes", []).append({
+              "CFBundleTypeRole": "Editor",
+              "CFBundleURLSchemes": [".".join(reversed(client_id.split(".")))],
+          })
+          with path.open("wb") as file:
+              plistlib.dump(info, file)
+          with Path("ios/Runner/Runner.entitlements").open("wb") as file:
+              plistlib.dump({"com.apple.developer.applesignin": ["Default"]}, file)
+          PY
+          flutter pub get
+          flutter test
       - name: Configure signing
         env:
           P12: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
@@ -52,20 +73,47 @@ jobs:
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "$RUNNER_TEMP/profile.plist" | grep -Fx Default
           UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$UUID.mobileprovision"
       - name: Build signed app
         run: |
           cd "$RUNNER_TEMP/tongyeok-app"
-          flutter build ios --release --no-codesign --build-number "$((1000 + GITHUB_RUN_NUMBER))" -t lib/main_web_shell.dart
-          python3 -c 'from pathlib import Path; p=Path("ios/Runner.xcodeproj/project.pbxproj"); s=p.read_text(); needle="PRODUCT_BUNDLE_IDENTIFIER = com.tongyeoktalk;"; assert s.count(needle) >= 1; q=chr(34); p.write_text(s.replace(needle, needle + " CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = 57QZYL899B; CODE_SIGN_IDENTITY = " + q + "Apple Distribution" + q + "; PROVISIONING_PROFILE_SPECIFIER = " + q + "Tongyeok Talk TestFlight" + q + ";"))'
+          flutter build ios --release --no-codesign --build-number "$((1000 + GITHUB_RUN_NUMBER))"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          export PROFILE_NAME
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("ios/Runner.xcodeproj/project.pbxproj")
+          project = path.read_text()
+          bundle = "PRODUCT_BUNDLE_IDENTIFIER = com.tongyeoktalk;"
+          assert bundle in project
+          settings = (
+              ' CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = 57QZYL899B;'
+              ' CODE_SIGN_IDENTITY = "Apple Distribution";'
+              ' CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'
+              f' PROVISIONING_PROFILE_SPECIFIER = "{os.environ["PROFILE_NAME"]}";'
+          )
+          path.write_text(project.replace(bundle, bundle + settings))
+          PY
           xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" archive
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict><key>method</key><string>app-store-connect</string><key>teamID</key><string>57QZYL899B</string><key>signingStyle</key><string>manual</string><key>signingCertificate</key><string>Apple Distribution</string><key>provisioningProfiles</key><dict><key>com.tongyeoktalk</key><string>Tongyeok Talk TestFlight</string></dict></dict></plist>
-          EOF
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          with (Path(os.environ["RUNNER_TEMP"]) / "ExportOptions.plist").open("wb") as file:
+              plistlib.dump({
+                  "method": "app-store-connect",
+                  "teamID": "57QZYL899B",
+                  "signingStyle": "manual",
+                  "signingCertificate": "Apple Distribution",
+                  "provisioningProfiles": {"com.tongyeoktalk": os.environ["PROFILE_NAME"]},
+              }, file)
+          PY
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
       - name: Upload to TestFlight
         env:
