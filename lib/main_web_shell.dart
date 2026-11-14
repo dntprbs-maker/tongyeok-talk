@@ -1,7 +1,9 @@
 // Isolated prototype. Advertising and notifications are not yet wired.
 // Do not use as a release entry point until device and bridge tests pass.
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
 
 void main() => runApp(const MaterialApp(
@@ -52,6 +54,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
           Text(mongolian ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.' : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'),
           TextButton(onPressed: () => _controller.reload(), child: Text(mongolian ? 'Дахин оролдох' : '다시 시도')),
         ]))),
+      if (iosAdProbeEnabled && !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+        const Align(alignment: Alignment.bottomCenter, child: IosRewardAdProbe()),
     ])));
   }
 }
