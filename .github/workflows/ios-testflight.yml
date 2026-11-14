@@ -26,8 +26,8 @@ jobs:
           cd "$RUNNER_TEMP/tongyeok-app"
           cp "$GITHUB_WORKSPACE/lib/main_web_shell.dart" "$GITHUB_WORKSPACE/lib/mobile_web_navigation.dart" "$GITHUB_WORKSPACE/lib/ios_reward_ad_probe.dart" lib/
           python3 -c 'from pathlib import Path; p=Path("pubspec.yaml"); s=p.read_text().replace("  flutter:\n    sdk: flutter\n", "  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n", 1); p.write_text(s)'
-          flutter pub add webview_flutter:4.14.1 google_mobile_ads:9.2.0
-          /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511' ios/Runner/Info.plist
+          flutter pub add webview_flutter:4.14.1
+          python3 -c 'from pathlib import Path; p=Path("lib/main_web_shell.dart"); s=p.read_text(); old="      if (iosAdProbeEnabled && !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)\n        const Align(alignment: Alignment.bottomCenter, child: IosRewardAdProbe()),\n"; assert old in s; s=s.replace(old, "").replace("import '\''ios_reward_ad_probe.dart'\'';\n", ""); p.write_text(s)'
           /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName 통역톡' ios/Runner/Info.plist
           mkdir -p test
           sed 's/package:bridgechat/package:tongyeoktalk/g' "$GITHUB_WORKSPACE/test/mobile_web_navigation_test.dart" > test/mobile_web_navigation_test.dart
