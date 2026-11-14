@@ -36,7 +36,7 @@ jobs:
       - name: Test web navigation rules
         run: cd "$RUNNER_TEMP/ios-shell" && flutter test test/mobile_web_navigation_test.dart
       - name: Build unsigned iOS simulator prototype
-        run: cd "$RUNNER_TEMP/ios-shell" && flutter build ios --simulator --debug --no-codesign --dart-define=TONGYEOK_IOS_AD_PROBE=true -t lib/main_web_shell.dart
+        run: cd "$RUNNER_TEMP/ios-shell" && flutter build ios --simulator --debug --no-codesign --dart-define=TONGYEOK_IOS_AD_PROBE=true --dart-define=TONGYEOK_IOS_AD_AUTO_TEST=true -t lib/main_web_shell.dart
       - name: Start prototype in an iPhone simulator
         run: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if "iPhone" in d["name"]))')
@@ -46,11 +46,15 @@ jobs:
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
           xcrun simctl install "$DEVICE_ID" "$APP"
           xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-          sleep 20
+          sleep 45
+          xcrun simctl spawn "$DEVICE_ID" log show --last 2m --style compact --predicate 'eventMessage CONTAINS "TT_IOS_AD_"' > "$RUNNER_TEMP/ios-ad-log.txt" || true
+          cat "$RUNNER_TEMP/ios-ad-log.txt"
           xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/ios-shell.png"
       - name: Preserve the test screen
         uses: actions/upload-artifact@v4
         with:
           name: ios-shell-screen
-          path: ${{ runner.temp }}/ios-shell.png
+          path: |
+            ${{ runner.temp }}/ios-shell.png
+            ${{ runner.temp }}/ios-ad-log.txt
           retention-days: 1

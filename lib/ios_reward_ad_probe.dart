@@ -2,9 +2,11 @@
 // included in the normal shell unless an explicit compile-time flag is set.
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 const iosAdProbeEnabled = bool.fromEnvironment('TONGYEOK_IOS_AD_PROBE');
+const iosAdAutoProbe = bool.fromEnvironment('TONGYEOK_IOS_AD_AUTO_TEST');
 const iosSampleRewardUnit = 'ca-app-pub-3940256099942544/1712485313';
 
 class IosRewardAdProbe extends StatefulWidget {
@@ -16,8 +18,15 @@ class IosRewardAdProbe extends StatefulWidget {
 class _IosRewardAdProbeState extends State<IosRewardAdProbe> {
   bool busy = false;
   String message = '';
+  @override
+  void initState() {
+    super.initState();
+    if (kDebugMode && iosAdProbeEnabled && iosAdAutoProbe) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) showSample(); });
+    }
+  }
   Future<void> showSample() async {
-    if (!iosAdProbeEnabled || busy) return;
+    if (!kDebugMode || !iosAdProbeEnabled || busy) return;
     setState(() { busy = true; message = ''; });
     RewardedAd? ad;
     try {
@@ -28,7 +37,7 @@ class _IosRewardAdProbeState extends State<IosRewardAdProbe> {
         adUnitId: iosSampleRewardUnit,
         request: const AdRequest(nonPersonalizedAds: true),
         rewardedAdLoadCallback: RewardedAdLoadCallback(
-          onAdLoaded: (value) { if (abandoned) { value.dispose(); } else if (!loaded.isCompleted) { loaded.complete(value); } },
+          onAdLoaded: (value) { debugPrint('TT_IOS_AD_LOADED'); if (abandoned) { value.dispose(); } else if (!loaded.isCompleted) { loaded.complete(value); } },
           onAdFailedToLoad: (_) { if (!loaded.isCompleted) loaded.completeError(StateError('load')); },
         ),
       );
@@ -36,14 +45,17 @@ class _IosRewardAdProbeState extends State<IosRewardAdProbe> {
       on TimeoutException { abandoned = true; rethrow; }
       final closed = Completer<void>();
       ad.fullScreenContentCallback = FullScreenContentCallback(
-        onAdDismissedFullScreenContent: (_) { if (!closed.isCompleted) closed.complete(); },
+        onAdShowedFullScreenContent: (_) => debugPrint('TT_IOS_AD_SHOWN'),
+        onAdDismissedFullScreenContent: (_) { debugPrint('TT_IOS_AD_DISMISSED'); if (!closed.isCompleted) closed.complete(); },
         onAdFailedToShowFullScreenContent: (_, __) { if (!closed.isCompleted) closed.completeError(StateError('show')); },
       );
       await ad.show(onUserEarnedReward: (_, __) {
+        debugPrint('TT_IOS_AD_EARNED_NO_REWARD');
         if (mounted) setState(() => message = '시험 광고 시청을 확인했습니다. 이용권은 지급하지 않습니다.');
       });
       await closed.future;
     } catch (_) {
+      debugPrint('TT_IOS_AD_FAILED');
       if (mounted) setState(() => message = '시험 광고를 표시하지 못했습니다.');
     } finally {
       ad?.dispose();
@@ -52,7 +64,7 @@ class _IosRewardAdProbeState extends State<IosRewardAdProbe> {
   }
   @override
   Widget build(BuildContext context) {
-    if (!iosAdProbeEnabled) return const SizedBox.shrink();
+    if (!kDebugMode || !iosAdProbeEnabled) return const SizedBox.shrink();
     return SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       FilledButton(onPressed: busy ? null : showSample, child: const Text('시험 광고 보기')),
       if (message.isNotEmpty) Text(message),
