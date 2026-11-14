@@ -2,12 +2,14 @@
 // Do not use as a release entry point until device and bridge tests pass.
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
 
 void main() => runApp(const MaterialApp(
   supportedLocales: [Locale('ko'), Locale('mn'), Locale('en')],
+  localizationsDelegates: GlobalMaterialLocalizations.delegates,
   home: TongyeokWebShell(),
 ));
 

@@ -29,6 +29,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ios-shell/test"
           sed 's/package:bridgechat/package:tongyeok_shell/g' test/mobile_web_navigation_test.dart > "$RUNNER_TEMP/ios-shell/test/mobile_web_navigation_test.dart"
           cd "$RUNNER_TEMP/ios-shell"
+          python3 -c 'from pathlib import Path; p=Path("pubspec.yaml"); s=p.read_text(); s=s.replace("  flutter:\n    sdk: flutter\n", "  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n", 1); p.write_text(s)'
           flutter pub add webview_flutter:4.14.1
           flutter pub add google_mobile_ads:9.2.0
           /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511' ios/Runner/Info.plist
