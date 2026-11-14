@@ -59,8 +59,8 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/tongyeok-app"
           flutter build ios --release --no-codesign --build-number "$((1000 + GITHUB_RUN_NUMBER))" -t lib/main_web_shell.dart
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual; PROVISIONING_PROFILE_SPECIFIER = "Tongyeok Talk TestFlight";/' ios/Runner.xcodeproj/project.pbxproj
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" DEVELOPMENT_TEAM=57QZYL899B CODE_SIGN_IDENTITY='Apple Distribution' archive
+          python3 -c 'from pathlib import Path; p=Path("ios/Runner.xcodeproj/project.pbxproj"); s=p.read_text(); needle="PRODUCT_BUNDLE_IDENTIFIER = com.tongyeoktalk;"; assert s.count(needle) >= 1; q=chr(34); p.write_text(s.replace(needle, needle + " CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = 57QZYL899B; CODE_SIGN_IDENTITY = " + q + "Apple Distribution" + q + "; PROVISIONING_PROFILE_SPECIFIER = " + q + "Tongyeok Talk TestFlight" + q + ";"))'
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" archive
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
