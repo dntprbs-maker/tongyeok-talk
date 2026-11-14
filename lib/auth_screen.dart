@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'auth_service.dart';
 import 'phone_identity.dart';
@@ -42,10 +43,12 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         await service.signInWithGoogle(language, name);
       }
+      final user = FirebaseAuth.instance.currentUser!;
+      final hasPhone = await service.hasRegisteredPhone(user);
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
-          '/recentConversations',
+          hasPhone ? '/recentConversations' : '/registerPhone',
           (_) => false,
         );
       }

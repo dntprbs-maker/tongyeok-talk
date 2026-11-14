@@ -8,6 +8,62 @@ class AuthService {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
 
+  Future<void> checkPhoneAvailability(PhoneIdentity phone) async {
+    final uid = _auth.currentUser!.uid;
+    final lookup = _db.collection('phoneDirectory').doc(phone.directoryKey);
+    final owner = (await lookup.get()).data()?['uid'];
+    if (owner != null && owner != uid) throw StateError('phoneInUse');
+  }
+
+  Future<bool> hasRegisteredPhone(User user) async {
+    final data =
+        (await _db
+                .collection('users')
+                .doc(user.uid)
+                .collection('private')
+                .doc('contact')
+                .get())
+            .data();
+    return data?['phoneE164'] is String;
+  }
+
+  Future<void> registerVerifiedPhone(
+    PhoneIdentity phone,
+    PhoneAuthCredential? code,
+  ) async {
+    var user = _auth.currentUser!;
+    final lookup = _db.collection('phoneDirectory').doc(phone.directoryKey);
+    final contact = _db
+        .collection('users')
+        .doc(user.uid)
+        .collection('private')
+        .doc('contact');
+    await checkPhoneAvailability(phone);
+    if (user.phoneNumber != phone.e164) {
+      if (code == null) throw StateError('phoneInvalid');
+      user = (await user.linkWithCredential(code)).user!;
+    }
+    if (user.phoneNumber != phone.e164 || _auth.currentUser?.uid != user.uid) {
+      throw StateError('phoneInvalid');
+    }
+    await user.getIdToken(true);
+    await _db.runTransaction((tx) async {
+      final directory = await tx.get(lookup);
+      final currentContact = await tx.get(contact);
+      if (directory.exists && directory.data()?['uid'] != user.uid) {
+        throw StateError('phoneInUse');
+      }
+      if (currentContact.exists &&
+          currentContact.data()?['phoneE164'] != phone.e164) {
+        throw StateError('phoneInUse');
+      }
+      if (!directory.exists) tx.set(lookup, {'uid': user.uid});
+      if (!currentContact.exists) {
+        tx.set(contact, {'phoneE164': phone.e164, 'phoneVerified': true});
+      }
+    });
+  }
+
   Future<void> signInWithGoogle(String language, String fallbackName) async {
     await _googleReady;
     final account = await GoogleSignIn.instance.authenticate();

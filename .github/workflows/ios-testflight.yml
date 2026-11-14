@@ -1,9 +1,6 @@
 name: Build and upload iOS TestFlight
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/ios-web-shell-check-20261114]
-    paths: [.github/workflows/ios-testflight.yml]
 permissions:
   contents: read
 jobs:
@@ -44,7 +41,10 @@ jobs:
           info["GIDClientID"] = client_id
           info.setdefault("CFBundleURLTypes", []).append({
               "CFBundleTypeRole": "Editor",
-              "CFBundleURLSchemes": [".".join(reversed(client_id.split(".")))],
+              "CFBundleURLSchemes": [
+                  ".".join(reversed(client_id.split("."))),
+                  "app-1-899237147853-ios-72dd39e67441cb23b1e584",
+              ],
           })
           with path.open("wb") as file:
               plistlib.dump(info, file)
