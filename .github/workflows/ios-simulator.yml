@@ -46,3 +46,11 @@ jobs:
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
           xcrun simctl install "$DEVICE_ID" "$APP"
           xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+          sleep 20
+          xcrun simctl io "$DEVICE_ID" screenshot "$RUNNER_TEMP/ios-shell.png"
+      - name: Preserve the test screen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-shell-screen
+          path: ${{ runner.temp }}/ios-shell.png
+          retention-days: 1
