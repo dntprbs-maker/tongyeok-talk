@@ -41,7 +41,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         return;
       }
       final user = await AuthService().findByPhone(
-        PhoneIdentity.parseKorean(_phone.text),
+        PhoneIdentity.parse(_phone.text),
       );
       if (!mounted) return;
       if (user == null) {

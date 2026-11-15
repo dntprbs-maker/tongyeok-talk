@@ -1,14 +1,73 @@
 rules_version = '2';
 service cloud.firestore {
  match /databases/{database}/documents {
-  function signed() { return request.auth != null; }
+  // Guest credentials never authenticate to Firestore. Only the owner can read
+  // room summaries; all message access uses the scoped server endpoints.
+  match /guestRooms/{id} {
+   allow read: if signed() && resource.data.owner == request.auth.uid;
+  }
+  function active(uid) {
+   return !exists(/databases/$(database)/documents/users/$(uid))
+    || !get(/databases/$(database)/documents/users/$(uid)).data.get('deleted',false);
+  }
+  function signed() { return request.auth != null && active(request.auth.uid); }
+  function contactPath(uid) {
+   return /databases/$(database)/documents/users/$(uid)/private/contact;
+  }
+  function directoryPath(number) {
+   return /databases/$(database)/documents/phoneDirectory/$(number);
+  }
+  function registered() {
+   return signed() && exists(contactPath(request.auth.uid));
+  }
+  function socialAccount() {
+   return request.auth.token.firebase.sign_in_provider in ['google.com', 'apple.com'];
+  }
   function validNumber(number) {
    return number.matches('^(82(10[0-9]{8}|1[16789][0-9]{7,8}|2[0-9]{7,8}|[3-6][1-5][0-9]{7,8}|70[0-9]{8})|976[1-9][0-9]{7})$');
   }
-  function member(cid) { return signed() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(cid)).data.participants; }
+  function member(cid) { return registered() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(cid)).data.participants; }
+  function blockedBy(owner, other) {
+   return exists(/databases/$(database)/documents/users/$(owner)/blockedUsers/$(other))
+    && get(/databases/$(database)/documents/users/$(owner)/blockedUsers/$(other)).data.blocked == true;
+  }
+  function openDirectRoom(cid) {
+   let people = get(/databases/$(database)/documents/conversations/$(cid)).data.participants;
+   return people.size() != 2 || (active(people[0]) && active(people[1])
+    && !blockedBy(people[0], people[1]) && !blockedBy(people[1], people[0]));
+  }
+  match /accountDeletionRequests/{uid} {
+   allow get: if request.auth != null && request.auth.uid == uid;
+  }
+  match /userReports/{report} {
+   allow create: if signed()
+    && request.resource.data.keys().hasOnly(['reportedBy','targetUid','conversationId','reason','details','createdAt'])
+    && request.resource.data.reportedBy == request.auth.uid
+    && request.resource.data.targetUid is string && request.resource.data.targetUid != request.auth.uid
+    && request.resource.data.conversationId is string && member(request.resource.data.conversationId)
+    && request.resource.data.targetUid in get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data.participants
+    && request.resource.data.reason in ['harassment','spam','inappropriate','other']
+    && request.resource.data.details is string && request.resource.data.details.size() <= 500
+    && request.resource.data.createdAt == request.time;
+  }
+  match /translationWallets/{uid} {
+   allow get: if signed() && request.auth.uid == uid;
+   match /entries/{entry} { allow get, list: if signed() && request.auth.uid == uid && request.query.limit <= 50; }
+  }
   // Names are readable by signed-in chat users; no global profile/phone listing.
   match /users/{uid} {
-   allow get: if signed();
+   match /blockedUsers/{other} {
+    allow get: if signed() && request.auth.uid == uid;
+    allow create, update: if signed() && request.auth.uid == uid && uid != other
+     && exists(/databases/$(database)/documents/users/$(other))
+     && request.resource.data.keys().hasOnly(['blocked','updatedAt'])
+     && request.resource.data.blocked is bool && request.resource.data.updatedAt == request.time;
+   }
+   match /adRewardReceipts/{receipt} {
+    allow get: if signed() && request.auth.uid == uid;
+    allow list: if signed() && request.auth.uid == uid && request.query.limit <= 20;
+   }
+   allow get: if request.auth != null && (request.auth.uid == uid || signed());
    allow create: if signed() && request.auth.uid == uid
     && request.resource.data.keys().hasOnly(['displayName','preferredLanguage','createdAt'])
     && request.resource.data.displayName is string && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 40
@@ -34,26 +93,37 @@ service cloud.firestore {
      && request.resource.data.phoneE164.matches('^\\+[0-9]+$')
      && validNumber(request.resource.data.phoneE164.replace('\\+', ''))
      && request.auth.token.email == 'p' + request.resource.data.phoneE164.replace('\\+', '') + '@phone.tongyeok.invalid';
+    allow create: if signed() && request.auth.uid == uid
+     && request.resource.data.keys().hasOnly(['phoneE164','phoneVerified'])
+     && request.resource.data.phoneVerified == false
+     && request.resource.data.phoneE164 is string
+     && request.resource.data.phoneE164.matches('^\\+[0-9]+$')
+     && validNumber(request.resource.data.phoneE164.replace('\\+', ''))
+     && socialAccount()
+     && getAfter(directoryPath(request.resource.data.phoneE164.replace('\\+', ''))).data.uid == uid;
    }
   }
   match /phoneDirectory/{number} {
    // Exact lookup only, using a number already known to the caller.
    allow get: if signed();
    allow create: if signed() && validNumber(number)
-    && request.auth.token.email == 'p' + number + '@phone.tongyeok.invalid'
+    && (request.auth.token.get('email', '') == 'p' + number + '@phone.tongyeok.invalid'
+     || (socialAccount()
+      && getAfter(contactPath(request.auth.uid)).data.phoneE164 == '+' + number
+      && getAfter(contactPath(request.auth.uid)).data.phoneVerified == false))
     && request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == request.auth.uid
     && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName is string;
   }
   match /conversations/{cid} {
-   allow read: if signed() && request.auth.uid in resource.data.participants;
-   allow create: if signed() && request.resource.data.keys().hasOnly(['participants','isGroup','groupName','lastMessage','timestamp'])
+   allow read: if registered() && request.auth.uid in resource.data.participants;
+   allow create: if registered() && request.resource.data.keys().hasOnly(['participants','isGroup','groupName','lastMessage','timestamp'])
     && request.resource.data.participants is list && request.auth.uid in request.resource.data.participants
     && request.resource.data.participants.size() >= 2 && request.resource.data.participants.size() <= 11
     && request.resource.data.participants.toSet().size() == request.resource.data.participants.size()
     && request.resource.data.lastMessage == '' && request.resource.data.timestamp == request.time;
    allow update: if member(cid)
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage','timestamp','groupName'])
-    && request.resource.data.lastMessage is string && request.resource.data.lastMessage.size() <= 2000
+    && request.resource.data.lastMessage is string && request.resource.data.lastMessage.matches('(?s)^.{0,200}$')
     && (!request.resource.data.keys().hasAny(['groupName']) || (request.resource.data.groupName is string && request.resource.data.groupName.size() <= 100));
    match /reads/{uid} {
     allow read: if member(cid);
@@ -72,13 +142,34 @@ service cloud.firestore {
      && get(/databases/$(database)/documents/conversations/$(cid)/messages/$(request.resource.data.messageId)).data.get('translationStatus', 'pending') != 'done';
    }
    match /messages/{mid} {
+    match /creditTranslations/{uid} {
+     allow get: if member(cid) && request.auth.uid == uid;
+    }
     allow read: if member(cid);
-    allow create: if member(cid)
+    allow create: if member(cid) && openDirectRoom(cid)
      && request.resource.data.keys().hasOnly(['senderId','originalText','translations','timestamp','sourceLang'])
      && request.resource.data.senderId == request.auth.uid
-     && request.resource.data.originalText is string && request.resource.data.originalText.size() > 0 && request.resource.data.originalText.size() <= 2000
+     && request.resource.data.originalText is string && request.resource.data.originalText.matches('(?s)^.{1,200}$')
+     && (!exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      || !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('rewardAdEnabled',false)
+      || request.resource.data.originalText.matches('(?s)^.{1,50}$'))
      && request.resource.data.translations is map && request.resource.data.translations.size() == 0
      && request.resource.data.timestamp == request.time && request.resource.data.sourceLang in ['ko','mn'];
+   }
+   match /creditRequests/{rid} {
+    allow create: if member(cid)
+     && request.resource.data.keys().hasOnly(['messageId','requestedBy','payForRecipient','requestedAt'])
+     && request.resource.data.requestedBy == request.auth.uid
+     && request.resource.data.requestedAt == request.time
+     && request.resource.data.messageId is string
+     && exists(/databases/$(database)/documents/conversations/$(cid)/messages/$(request.resource.data.messageId))
+     && (get(/databases/$(database)/documents/conversations/$(cid)).data.get('translationCreditPolicy','') == 'receiver-v1'
+      || (get(/databases/$(database)/documents/conversations/$(cid)).data.participants.size() == 2
+       && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('rewardAdEnabled',false) == true))
+     && (!request.resource.data.keys().hasAny(['payForRecipient']) || (
+      get(/databases/$(database)/documents/conversations/$(cid)/messages/$(request.resource.data.messageId)).data.senderId == request.auth.uid
+      && request.resource.data.payForRecipient in get(/databases/$(database)/documents/conversations/$(cid)).data.participants
+      && request.resource.data.payForRecipient != request.auth.uid));
    }
   }
  }
