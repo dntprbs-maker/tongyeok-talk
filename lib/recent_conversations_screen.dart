@@ -9,6 +9,7 @@ import 'notification_prompt.dart';
 import 'query_audit.dart';
 import 'settings_screen.dart';
 import 'package:intl/intl.dart';
+import 'referral_screen.dart';
 
 class RecentConversationsScreen extends StatefulWidget {
   const RecentConversationsScreen({super.key});
@@ -19,6 +20,15 @@ class RecentConversationsScreen extends StatefulWidget {
 
 class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   final currentUser = FirebaseAuth.instance.currentUser!;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showReferralAnnouncement(context, currentUser.uid);
+    });
+  }
+
   final _prompt = GlobalKey<NotificationPromptState>();
   final _names = <String, Future<Map<String, dynamic>?>>{};
   final _roomNames = <String, Future<String>>{};

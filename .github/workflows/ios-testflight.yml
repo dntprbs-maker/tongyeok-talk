@@ -45,6 +45,14 @@ jobs:
               info = plistlib.load(file)
           info["CFBundleDisplayName"] = "통역톡"
           info["GIDClientID"] = client_id
+          info["UISupportedInterfaceOrientations"] = ["UIInterfaceOrientationPortrait"]
+          info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
+          info["UIRequiresFullScreen"] = True
+          info["FlutterDeepLinkingEnabled"] = False
+          info.setdefault("CFBundleURLTypes", []).append({
+              "CFBundleTypeRole": "Editor",
+              "CFBundleURLSchemes": ["tongyeoktalk"],
+          })
           info.setdefault("CFBundleURLTypes", []).append({
               "CFBundleTypeRole": "Editor",
               "CFBundleURLSchemes": [
@@ -55,6 +63,50 @@ jobs:
               plistlib.dump(info, file)
           with Path("ios/Runner/Runner.entitlements").open("wb") as file:
               plistlib.dump({"com.apple.developer.applesignin": ["Default"]}, file)
+          delegate = Path("ios/Runner/AppDelegate.swift")
+          swift = delegate.read_text()
+          registration = "    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)"
+          assert swift.count(registration) == 1
+          swift = swift.replace("import Flutter\n", "import Flutter\nimport MessageUI\n")
+          swift = swift.replace(registration, registration + """
+              let invite = FlutterMethodChannel(
+                name: "tongyeok/invite",
+                binaryMessenger: engineBridge.applicationRegistrar.messenger()
+              )
+              invite.setMethodCallHandler { [weak self] call, result in
+                guard call.method == "composeSms" else {
+                  result(FlutterMethodNotImplemented)
+                  return
+                }
+                guard let self = self,
+                      let args = call.arguments as? [String: String],
+                      let phone = args["phone"], let body = args["body"],
+                      MFMessageComposeViewController.canSendText(),
+                      let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+                        .first(where: { $0.activationState == .foregroundActive }),
+                      var presenter = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                  result(FlutterError(code: "unavailable", message: nil, details: nil))
+                  return
+                }
+                while let presented = presenter.presentedViewController { presenter = presented }
+                let composer = MFMessageComposeViewController()
+                composer.recipients = [phone]
+                composer.body = body
+                composer.messageComposeDelegate = self
+                presenter.present(composer, animated: true) { result(nil) }
+              }
+          """)
+          swift += """
+          extension AppDelegate: MFMessageComposeViewControllerDelegate {
+            func messageComposeViewController(
+              _ controller: MFMessageComposeViewController,
+              didFinishWith result: MessageComposeResult
+            ) {
+              controller.dismiss(animated: true)
+            }
+          }
+          """
+          delegate.write_text(swift)
           PY
           flutter pub get
           flutter test
@@ -134,3 +186,49 @@ jobs:
           IPA=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)
           test -n "$IPA"
           xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          node --input-type=module <<'JS'
+          import { sign } from 'node:crypto';
+          import { setTimeout as delay } from 'node:timers/promises';
+
+          const buildNumber = String(1000 + Number(process.env.GITHUB_RUN_NUMBER));
+          const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
+          async function apple(path, query) {
+            const now = Math.floor(Date.now() / 1000);
+            const header = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' });
+            const claims = encode({ iss: process.env.ASC_ISSUER_ID, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
+            const input = header + '.' + claims;
+            const signature = sign('sha256', Buffer.from(input), {
+              key: process.env.ASC_KEY,
+              dsaEncoding: 'ieee-p1363',
+            }).toString('base64url');
+            const url = new URL(path, 'https://api.appstoreconnect.apple.com');
+            url.search = new URLSearchParams(query);
+            const response = await fetch(url, { headers: { Authorization: 'Bearer ' + input + '.' + signature } });
+            if (!response.ok) throw Error('App Store Connect returned ' + response.status + ' for ' + path);
+            return response.json();
+          }
+
+          const { data: [app] } = await apple('/v1/apps', { 'filter[bundleId]': 'com.tongyeoktalk' });
+          if (!app) throw Error('App Store Connect app not found');
+          for (let attempt = 0; attempt < 30; attempt++) {
+            const { data: [build] } = await apple('/v1/builds', {
+              'filter[app]': app.id,
+              'filter[version]': buildNumber,
+            });
+            if (build) {
+              const { data: [detail] } = await apple('/v1/buildBetaDetails', { 'filter[build]': build.id });
+              const internal = detail?.attributes.internalBuildState;
+              console.log('Build', buildNumber, build.attributes.processingState, internal ?? 'pending');
+              if (internal === 'IN_BETA_TESTING') {
+                console.log('TestFlight internal testing active for build', buildNumber);
+                process.exit(0);
+              }
+              if (['FAILED', 'INVALID'].includes(build.attributes.processingState) ||
+                  ['PROCESSING_EXCEPTION', 'MISSING_EXPORT_COMPLIANCE'].includes(internal)) {
+                throw Error('TestFlight build needs attention');
+              }
+            }
+            await delay(20000);
+          }
+          throw Error('Upload accepted, but TestFlight availability was not confirmed');
+          JS

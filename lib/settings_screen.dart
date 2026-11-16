@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'referral_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -144,6 +145,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                ListTile(
+                  leading: const Icon(Icons.card_giftcard_outlined),
+                  title: Text(referralLabel(context)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:
+                      () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => const ReferralScreen(),
+                        ),
+                      ),
+                ),
                 Text(
                   tr(context, 'account'),
                   style: Theme.of(context).textTheme.titleMedium,
