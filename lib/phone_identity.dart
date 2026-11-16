@@ -1,4 +1,12 @@
 class PhoneIdentity {
+  static PhoneIdentity parseSearch(String input) {
+    final digits = input.trim().replaceAll(RegExp(r'[\s().-]'), '');
+    if (RegExp(r'^[0-9]{8}$').hasMatch(digits)) {
+      return parse('010$digits');
+    }
+    return parse(input);
+  }
+
   final String e164;
   const PhoneIdentity._(this.e164);
   String get directoryKey => e164.substring(1);

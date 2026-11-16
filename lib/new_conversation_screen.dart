@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'chat_service.dart';
@@ -7,6 +8,37 @@ import 'auth_service.dart';
 import 'phone_identity.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
+
+class _PhoneSearchFormatter extends TextInputFormatter {
+  const _PhoneSearchFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final input = newValue.text;
+    if (!newValue.composing.isCollapsed ||
+        !RegExp(r'^[0-9-]*$').hasMatch(input)) {
+      return newValue;
+    }
+    final digits = input.replaceAll('-', '');
+    final String formatted;
+    if (digits.length == 11 && digits.startsWith('010')) {
+      formatted =
+          '${digits.substring(0, 3)}-${digits.substring(3, 7)}-${digits.substring(7)}';
+    } else if (digits.length > 4 && digits.length <= 8) {
+      formatted = '${digits.substring(0, 4)}-${digits.substring(4)}';
+    } else {
+      return newValue;
+    }
+    if (formatted == input) return newValue;
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
 
 class NewConversationScreen extends StatefulWidget {
   const NewConversationScreen({super.key});
@@ -41,7 +73,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         return;
       }
       final user = await AuthService().findByPhone(
-        PhoneIdentity.parse(_phone.text),
+        PhoneIdentity.parseSearch(_phone.text),
       );
       if (!mounted) return;
       if (user == null) {
@@ -78,7 +110,11 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = errorKey(e));
+      if (mounted) {
+        setState(
+          () => _error = e is FormatException ? 'phoneSearchHelp' : errorKey(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,13 +176,14 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
             TextField(
               key: const ValueKey('search-phone'),
               controller: _phone,
+              inputFormatters: const [_PhoneSearchFormatter()],
               enabled: !_busy,
               keyboardType: TextInputType.phone,
               onSubmitted: (_) => _find(),
               decoration: InputDecoration(
                 labelText: tr(context, 'searchPhone'),
-                hintText: '010-1234-5678',
-                helperText: tr(context, 'findPhoneHint'),
+                hintText: '1234-5678',
+                helperText: tr(context, 'phoneSearchHelp'),
                 helperMaxLines: 2,
               ),
             ),

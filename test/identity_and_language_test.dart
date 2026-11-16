@@ -6,6 +6,20 @@ import 'package:bridgechat/app_language.dart';
 import 'package:bridgechat/main.dart';
 
 void main() {
+  test('contact search accepts the eight digits after 010', () {
+    for (final input in [
+      '12345678',
+      '1234-5678',
+      '010-1234-5678',
+      '+82 10 1234 5678',
+    ]) {
+      expect(PhoneIdentity.parseSearch(input).directoryKey, '821012345678');
+    }
+    expect(PhoneIdentity.parseSearch('0012-3456').e164, '+821000123456');
+    expect(PhoneIdentity.parseSearch('+976 9911-2233').e164, '+97699112233');
+    expect(() => PhoneIdentity.parseSearch('5678'), throwsFormatException);
+    expect(() => PhoneIdentity.parseKorean('12345678'), throwsFormatException);
+  });
   test('Korean local and international formats resolve to one login', () {
     final a = PhoneIdentity.parse('010-1234-5678'),
         b = PhoneIdentity.parse('+82 (0)10 1234 5678');
@@ -74,7 +88,13 @@ void main() {
       find.byKey(const ValueKey('auth-phone')),
       '010-1234-5678',
     );
-    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('auth-phone'))).controller!.text, '010-1234-5678');
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('auth-phone')))
+          .controller!
+          .text,
+      '010-1234-5678',
+    );
     expect(find.text('Email'), findsNothing);
     expect(find.text('Username'), findsNothing);
     await AppLanguage.instance.initialize();
@@ -84,7 +104,9 @@ void main() {
     expect(find.text('닉네임'), findsOneWidget);
     expect(find.text('전화번호'), findsOneWidget);
     expect(find.text('비밀번호'), findsOneWidget);
-    final passwordField = tester.widget<TextFormField>(find.byKey(const ValueKey('auth-password')));
+    final passwordField = tester.widget<TextFormField>(
+      find.byKey(const ValueKey('auth-password')),
+    );
     expect(passwordField.validator!('1234'), messages['passwordShort']![0]);
     expect(passwordField.validator!('12345'), messages['passwordShort']![0]);
     expect(passwordField.validator!('123456'), isNull);
