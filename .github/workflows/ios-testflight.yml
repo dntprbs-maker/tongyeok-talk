@@ -3,7 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [codex/ios-web-shell-check-20261114]
-    paths: [.github/workflows/ios-testflight.yml]
+    paths:
+      - .github/workflows/ios-testflight.yml
+      - lib/phone_identity.dart
 permissions:
   contents: read
 jobs:

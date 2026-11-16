@@ -41,7 +41,7 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         return;
       }
       final user = await AuthService().findByPhone(
-        PhoneIdentity.parse(_phone.text),
+        PhoneIdentity.parseSearch(_phone.text),
       );
       if (!mounted) return;
       if (user == null) {
@@ -78,7 +78,11 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
         }
       }
     } catch (e) {
-      if (mounted) setState(() => _error = errorKey(e));
+      if (mounted) {
+        setState(
+          () => _error = e is FormatException ? 'phoneSearchHelp' : errorKey(e),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -145,7 +149,8 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
               onSubmitted: (_) => _find(),
               decoration: InputDecoration(
                 labelText: tr(context, 'searchPhone'),
-                hintText: '010-1234-5678',
+                hintText: '1234-5678',
+                helperText: tr(context, 'phoneSearchHelp'),
                 helperText: tr(context, 'findPhoneHint'),
                 helperMaxLines: 2,
               ),
