@@ -80,36 +80,16 @@ void main() {
     await tester.ensureVisible(find.text('Бүртгүүлэх'));
     await tester.tap(find.text('Бүртгүүлэх'));
     await tester.pumpAndSettle();
-    expect(find.text('Хоч нэр'), findsOneWidget);
-    expect(find.text('Утасны дугаар'), findsOneWidget);
-    expect(find.text('Нууц үг'), findsOneWidget);
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
-    await tester.enterText(
-      find.byKey(const ValueKey('auth-phone')),
-      '010-1234-5678',
-    );
-    expect(
-      tester
-          .widget<TextFormField>(find.byKey(const ValueKey('auth-phone')))
-          .controller!
-          .text,
-      '010-1234-5678',
-    );
-    expect(find.text('Email'), findsNothing);
-    expect(find.text('Username'), findsNothing);
+    expect(find.text('Google-ээр үргэлжлүүлэх'), findsOneWidget);
+    expect(find.text('Утасны дугаараар нэвтрэх'), findsNothing);
+    expect(find.byType(TextFormField), findsNothing);
     await AppLanguage.instance.initialize();
     expect(AppLanguage.instance.code, 'mn');
     await tester.tap(find.text('한국어'));
     await tester.pumpAndSettle();
-    expect(find.text('닉네임'), findsOneWidget);
-    expect(find.text('전화번호'), findsOneWidget);
-    expect(find.text('비밀번호'), findsOneWidget);
-    final passwordField = tester.widget<TextFormField>(
-      find.byKey(const ValueKey('auth-password')),
-    );
-    expect(passwordField.validator!('1234'), messages['passwordShort']![0]);
-    expect(passwordField.validator!('12345'), messages['passwordShort']![0]);
-    expect(passwordField.validator!('123456'), isNull);
+    expect(find.text('Google로 계속하기'), findsOneWidget);
+    expect(find.text('전화번호 계정 사용'), findsNothing);
+    expect(find.byType(TextFormField), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
