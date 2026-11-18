@@ -1,0 +1,94 @@
+name: Activate existing iOS TestFlight build
+on:
+  push:
+    branches: [codex/ios-web-shell-check-20261114]
+    paths: [.github/workflows/ios-testflight-recovery.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+    steps:
+      - name: Restore internal distribution for build 1012
+        run: |
+          node --input-type=module <<'JS'
+          import { sign } from 'node:crypto';
+          import { setTimeout as delay } from 'node:timers/promises';
+
+          const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
+          async function apple(path, { query, data } = {}) {
+            const now = Math.floor(Date.now() / 1000);
+            const header = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' });
+            const claims = encode({ iss: process.env.ASC_ISSUER_ID, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
+            const input = header + '.' + claims;
+            const signature = sign('sha256', Buffer.from(input), {
+              key: process.env.ASC_KEY,
+              dsaEncoding: 'ieee-p1363',
+            }).toString('base64url');
+            const url = new URL(path, 'https://api.appstoreconnect.apple.com');
+            url.search = new URLSearchParams(query);
+            const response = await fetch(url, {
+              method: data ? 'POST' : 'GET',
+              headers: { Authorization: 'Bearer ' + input + '.' + signature, 'Content-Type': 'application/json' },
+              body: data ? JSON.stringify({ data }) : undefined,
+            });
+            if (!response.ok) {
+              const failure = await response.json();
+              throw Error(response.status + ' ' + path + ' ' + failure.errors?.map(error => error.code + ': ' + error.detail).join('; '));
+            }
+            return response.status === 204 ? undefined : (await response.json()).data;
+          }
+
+          const [app] = await apple('/v1/apps', { query: { 'filter[bundleId]': 'com.tongyeoktalk' } });
+          if (!app) throw Error('Tongyeok Talk was not found');
+          async function findBuild(version) {
+            const builds = await apple('/v1/builds', { query: { 'filter[app]': app.id, 'filter[version]': version } });
+            if (builds.length !== 1 || builds[0].attributes.processingState !== 'VALID' || builds[0].attributes.expired) {
+              throw Error('Build ' + version + ' is not uniquely identified, valid and unexpired');
+            }
+            return builds[0];
+          }
+          async function confirmGroups(groups) {
+            const internal = groups.filter(group => group.attributes.isInternalGroup);
+            const eligible = [];
+            for (const group of internal) {
+              const testers = await apple('/v1/betaGroups/' + group.id + '/betaTesters', { query: { limit: '1' } });
+              if (testers.length) eligible.push(group);
+            }
+            return eligible;
+          }
+          const target = await findBuild('1012');
+          const targetPath = '/v1/builds/' + target.id;
+          const allGroups = await apple('/v1/betaGroups', {
+            query: { 'filter[app]': app.id, limit: '200' },
+          });
+          const automaticGroups = allGroups.filter(group => group.attributes.hasAccessToAllBuilds);
+          const current = await confirmGroups([...(await apple(targetPath + '/betaGroups')), ...automaticGroups]);
+          if (!current.length) {
+            const prior = await findBuild('1008');
+            const previousGroups = await confirmGroups(await apple('/v1/builds/' + prior.id + '/betaGroups'));
+            if (!previousGroups.length) throw Error('Prior build has no internal group with testers');
+            await apple(targetPath + '/relationships/betaGroups', {
+              data: previousGroups.map(group => ({ type: 'betaGroups', id: group.id })),
+            });
+          }
+          for (let attempt = 0; attempt < 12; attempt++) {
+            const [detail] = await apple('/v1/buildBetaDetails', { query: { 'filter[build]': target.id } });
+            const state = detail?.attributes.internalBuildState;
+            console.log('Build 1012 internal state:', state);
+            if (state === 'IN_BETA_TESTING') {
+              const confirmed = await confirmGroups([...(await apple(targetPath + '/betaGroups')), ...automaticGroups]);
+              if (!confirmed.length) throw Error('No internal group with testers was verified');
+              console.log('Build 1012 is active in TestFlight with an existing internal tester group');
+              process.exit(0);
+            }
+            await delay(10000);
+          }
+          throw Error('Build 1012 has not become installable');
+          JS
