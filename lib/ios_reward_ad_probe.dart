@@ -1,12 +1,16 @@
 // Developer-only sample ad. This probe cannot grant rewards and is never
 // included in the normal shell unless an explicit compile-time flag is set.
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'native_reward_bridge_device.dart';
+import 'native_reward_bridge_protocol.dart';
 
 const iosAdProbeEnabled = bool.fromEnvironment('TONGYEOK_IOS_AD_PROBE');
 const iosAdAutoProbe = bool.fromEnvironment('TONGYEOK_IOS_AD_AUTO_TEST');
+const iosNativeRewardProbe = bool.fromEnvironment('TONGYEOK_IOS_REWARD_BRIDGE_PROBE');
 const iosSampleRewardUnit = 'ca-app-pub-3940256099942544/1712485313';
 
 class IosRewardAdProbe extends StatefulWidget {
@@ -30,6 +34,24 @@ class _IosRewardAdProbeState extends State<IosRewardAdProbe> {
     setState(() { busy = true; message = ''; });
     RewardedAd? ad;
     try {
+      if (iosNativeRewardProbe) {
+        // Debug-only SDK integration probe. It uses Google's sample unit and
+        // a synthetic session, with no backend request or entitlement writes.
+        const nonce = 'simulator_reward_nonce_12345678901234567890';
+        const uid = 'QA_simulator_reward_20261119';
+        final page = Uri.https('dntprbs-maker.github.io', '/tongyeok-talk/');
+        final device = NativeRewardBridgeDevice();
+        final prepare = NativeRewardRequest.parse(jsonEncode({
+          'id':'r1','action':'prepare','nonce':nonce,'uid':uid,
+        }), nonce, page, testMode:true)!;
+        await device.run(prepare);
+        final show = NativeRewardRequest.parse(jsonEncode({
+          'id':'r2','action':'show','nonce':nonce,'uid':uid,
+          'sessionId':'a'*64,'adUnitId':iosRewardSampleUnit,'testAds':true,
+        }), nonce, page, testMode:true)!;
+        await device.run(show);
+        return;
+      }
       await MobileAds.instance.initialize();
       final loaded = Completer<RewardedAd>();
       var abandoned = false;

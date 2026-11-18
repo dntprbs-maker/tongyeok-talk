@@ -8,6 +8,12 @@ import 'read_receipts.dart';
 import 'notification_prompt.dart';
 import 'query_audit.dart';
 import 'settings_screen.dart';
+import 'translation_wallet.dart';
+import 'reward_ad_service.dart';
+import 'reward_ads_section.dart' show isRewardLeader;
+import 'reward_ads_screen.dart';
+import 'reward_platform.dart' as reward_platform;
+
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
 
@@ -24,6 +30,9 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   @override
   void initState() {
     super.initState();
+    _stopRewardListener = reward_platform.listenAvailability(() {
+      if (mounted) setState(() {});
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) showReferralAnnouncement(context, currentUser.uid);
     });
@@ -32,6 +41,69 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   final _prompt = GlobalKey<NotificationPromptState>();
   final _names = <String, Future<Map<String, dynamic>?>>{};
   final _roomNames = <String, Future<String>>{};
+  late final void Function() _stopRewardListener;
+  @override
+  void dispose() {
+    _stopRewardListener();
+    super.dispose();
+  }
+
+  late final _rewardProfile =
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .snapshots();
+
+  Widget _watchAdsButton() => FilledButton.icon(
+    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+    label: Text(tr(context, 'watchAds'), textAlign: TextAlign.center),
+    style: FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      minimumSize: const Size(0, 44),
+      backgroundColor: const Color(0xFF0739E4),
+      foregroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ),
+    onPressed:
+        () => Navigator.push<void>(
+          context,
+          MaterialPageRoute(builder: (_) => const RewardAdsScreen()),
+        ),
+  );
+
+  Widget _rewardSummary() =>
+      StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _rewardProfile,
+        builder: (context, snapshot) {
+          final profile = snapshot.data?.data();
+          final enabled = profile?['rewardAdEnabled'] == true;
+          final canWatch =
+              rewardAdsSupported && (enabled || rewardPlaybackTest);
+          return Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEBF3FE),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TranslationWallet(
+                    compact: true,
+                    balanceOnly: true,
+                    showLeaderPass: enabled && isRewardLeader(profile),
+                  ),
+                ),
+                if (canWatch) ...[
+                  const SizedBox(width: 10),
+                  Flexible(child: _watchAdsButton()),
+                ],
+              ],
+            ),
+          );
+        },
+      );
   late final _rooms =
       FirebaseFirestore.instance
           .collection('conversations')
@@ -113,6 +185,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
           constraints: const BoxConstraints(maxWidth: 700),
           child: CustomScrollView(
             slivers: [
+              SliverToBoxAdapter(child: _rewardSummary()),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _rooms,
                 builder: (context, snapshot) {
