@@ -50,7 +50,9 @@ jobs:
       - name: Build unsigned iOS simulator prototype
         run: cd "$RUNNER_TEMP/ios-shell" && flutter build ios --simulator --debug --no-codesign --dart-define=TONGYEOK_IOS_NATIVE_PUSH=true --dart-define=TONGYEOK_IOS_AD_PROBE=true --dart-define=TONGYEOK_IOS_AD_AUTO_TEST=true -t lib/main_web_shell.dart
       - name: Start prototype in an iPhone simulator
+        timeout-minutes: 8
         run: |
+          xcrun simctl list devices available > "$RUNNER_TEMP/ios-simulator-devices.txt"
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if "iPhone" in d["name"]))')
           xcrun simctl boot "$DEVICE_ID" || true
           xcrun simctl bootstatus "$DEVICE_ID" -b
@@ -63,12 +65,15 @@ jobs:
           perl -e 'alarm shift; exec @ARGV' 20 xcrun simctl spawn "$DEVICE_ID" log show --last 2m --style compact --predicate 'eventMessage CONTAINS "TT_IOS_AD_"' > "$RUNNER_TEMP/ios-ad-log.txt" || true
           cat "$RUNNER_TEMP/ios-ad-log.txt"
       - name: Preserve the test screen
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: ios-shell-screen
           path: |
             ${{ runner.temp }}/ios-shell.png
             ${{ runner.temp }}/ios-ad-log.txt
+            ${{ runner.temp }}/ios-simulator-devices.txt
+          if-no-files-found: warn
           retention-days: 1
   apple-readiness:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_apple }}
