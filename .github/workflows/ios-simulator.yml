@@ -2,6 +2,11 @@ name: iOS simulator build
 
 on:
   workflow_dispatch:
+    inputs:
+      audit_apple:
+        description: Read existing Apple push capabilities only
+        type: boolean
+        default: false
   push:
     branches: [codex/ios-web-shell-check-20261114]
 
@@ -10,6 +15,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ !inputs.audit_apple }}
     runs-on: macos-26-intel
     timeout-minutes: 35
     steps:
@@ -63,4 +69,53 @@ jobs:
           path: |
             ${{ runner.temp }}/ios-shell.png
             ${{ runner.temp }}/ios-ad-log.txt
+          retention-days: 1
+  apple-readiness:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.audit_apple }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+    steps:
+      - name: Read this app's capabilities and profile metadata
+        run: |
+          node --input-type=module <<'JS'
+          import {sign} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const encode = x => Buffer.from(JSON.stringify(x)).toString('base64url');
+          async function read(path, query={}) {
+            const now = Math.floor(Date.now()/1000);
+            const input = encode({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+
+              encode({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+300,aud:'appstoreconnect-v1'});
+            const signature = sign('sha256',Buffer.from(input),{
+              key:process.env.ASC_KEY,dsaEncoding:'ieee-p1363',
+            }).toString('base64url');
+            const url = new URL(path,'https://api.appstoreconnect.apple.com');
+            if(url.origin!=='https://api.appstoreconnect.apple.com')throw Error('unexpected_origin');
+            url.search = new URLSearchParams(query);
+            const r = await fetch(url,{headers:{Authorization:'Bearer '+input+'.'+signature}});
+            return r.ok ? {status:r.status,data:(await r.json()).data} : {status:r.status};
+          }
+          const bundle = await read('/v1/bundleIds',{'filter[identifier]':'com.tongyeoktalk'});
+          const result = {checkedAt:new Date().toISOString(),readOnly:true,bundleStatus:bundle.status};
+          if(bundle.data?.length===1 && bundle.data[0].attributes.identifier==='com.tongyeoktalk') {
+            const id=bundle.data[0].id;
+            const [caps,profiles]=await Promise.all([
+              read('/v1/bundleIds/'+id+'/bundleIdCapabilities'),
+              read('/v1/bundleIds/'+id+'/profiles',{'fields[profiles]':'name,profileState,profileType,expirationDate'}),
+            ]);
+            result.capabilitiesStatus=caps.status;
+            result.capabilities=caps.data?.map(x=>x.attributes.capabilityType);
+            result.profilesStatus=profiles.status;
+            result.profiles=profiles.data?.map(x=>x.attributes);
+          }
+          console.log(JSON.stringify(result));
+          writeFileSync(process.env.RUNNER_TEMP+'/apple-push-readiness.json',JSON.stringify(result,null,2));
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apple-push-readiness
+          path: ${{ runner.temp }}/apple-push-readiness.json
           retention-days: 1
