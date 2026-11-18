@@ -2,9 +2,10 @@ name: Build and upload iOS TestFlight
 on:
   workflow_dispatch:
   push:
-    branches: [codex/ios-web-shell-check-20261114]
+    branches: [codex/ios-web-shell-check-20261114, codex/ios-web-testflight-20261118]
     paths:
       - .github/workflows/ios-testflight.yml
+      - lib/main_web_shell.dart
       - lib/phone_identity.dart
       - lib/new_conversation_screen.dart
       - lib/referral_screen.dart
@@ -15,6 +16,8 @@ jobs:
   testflight:
     runs-on: macos-26-intel
     timeout-minutes: 45
+    env:
+      APP_VARIANT: ${{ github.ref_name == 'codex/ios-web-testflight-20261118' && 'web' || 'native' }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Flutter
@@ -112,6 +115,11 @@ jobs:
           delegate.write_text(swift)
           PY
           flutter pub get
+          if [[ "$APP_VARIANT" == web ]]; then
+            flutter pub add webview_flutter:4.14.1 google_mobile_ads:9.2.0
+            /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511' ios/Runner/Info.plist
+            flutter test test/mobile_web_navigation_test.dart
+          fi
           flutter test
       - name: Configure signing
         env:
@@ -139,8 +147,13 @@ jobs:
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$UUID.mobileprovision"
       - name: Build signed app
         run: |
+          set -euo pipefail
           cd "$RUNNER_TEMP/tongyeok-app"
-          flutter build ios --release --no-codesign --build-number "$((1000 + GITHUB_RUN_NUMBER))"
+          target=lib/main.dart
+          if [[ "$APP_VARIANT" == web ]]; then
+            target=lib/main_web_shell.dart
+          fi
+          flutter build ios --release --no-codesign --target "$target" --build-number "$((1000 + GITHUB_RUN_NUMBER))"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
           export PROFILE_NAME
           python3 - <<'PY'
@@ -195,7 +208,7 @@ jobs:
 
           const buildNumber = String(1000 + Number(process.env.GITHUB_RUN_NUMBER));
           const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
-          async function apple(path, query) {
+          async function apple(path, query, data) {
             const now = Math.floor(Date.now() / 1000);
             const header = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' });
             const claims = encode({ iss: process.env.ASC_ISSUER_ID, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
@@ -206,13 +219,19 @@ jobs:
             }).toString('base64url');
             const url = new URL(path, 'https://api.appstoreconnect.apple.com');
             url.search = new URLSearchParams(query);
-            const response = await fetch(url, { headers: { Authorization: 'Bearer ' + input + '.' + signature } });
+            const response = await fetch(url, {
+              method: data ? 'POST' : 'GET',
+              headers: { Authorization: 'Bearer ' + input + '.' + signature, 'Content-Type': 'application/json' },
+              body: data ? JSON.stringify({ data }) : undefined,
+            });
             if (!response.ok) throw Error('App Store Connect returned ' + response.status + ' for ' + path);
+            if (response.status === 204) return;
             return response.json();
           }
 
           const { data: [app] } = await apple('/v1/apps', { 'filter[bundleId]': 'com.tongyeoktalk' });
           if (!app) throw Error('App Store Connect app not found');
+          let groupAssignmentChecked = false;
           for (let attempt = 0; attempt < 30; attempt++) {
             const { data: [build] } = await apple('/v1/builds', {
               'filter[app]': app.id,
@@ -229,6 +248,19 @@ jobs:
               if (['FAILED', 'INVALID'].includes(build.attributes.processingState) ||
                   ['PROCESSING_EXCEPTION', 'MISSING_EXPORT_COMPLIANCE'].includes(internal)) {
                 throw Error('TestFlight build needs attention');
+              }
+              if (process.env.APP_VARIANT === 'web' && internal === 'READY_FOR_BETA_TESTING' && !groupAssignmentChecked) {
+                const { data: [previous] } = await apple('/v1/builds', {
+                  'filter[app]': app.id, 'filter[version]': '1012',
+                });
+                if (!previous) throw Error('Existing internal build 1012 was not found');
+                const { data: groups } = await apple('/v1/builds/' + previous.id + '/betaGroups', {});
+                const internalGroups = groups.filter(group => group.attributes.isInternalGroup);
+                if (internalGroups.length === 0) throw Error('Existing build 1012 has no internal beta group');
+                await apple('/v1/builds/' + build.id + '/relationships/betaGroups', {}, internalGroups.map(
+                  group => ({ type: 'betaGroups', id: group.id }),
+                ));
+                groupAssignmentChecked = true;
               }
             }
             await delay(20000);
