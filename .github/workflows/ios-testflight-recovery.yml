@@ -32,7 +32,8 @@ jobs:
               dsaEncoding: 'ieee-p1363',
             }).toString('base64url');
             const url = new URL(path, 'https://api.appstoreconnect.apple.com');
-            url.search = new URLSearchParams(query);
+            if (url.origin !== 'https://api.appstoreconnect.apple.com') throw Error('Unexpected API origin');
+            if (query) url.search = new URLSearchParams(query);
             const response = await fetch(url, {
               method: data ? 'POST' : 'GET',
               headers: { Authorization: 'Bearer ' + input + '.' + signature, 'Content-Type': 'application/json' },
@@ -42,7 +43,11 @@ jobs:
               const failure = await response.json();
               throw Error(response.status + ' ' + path + ' ' + failure.errors?.map(error => error.code + ': ' + error.detail).join('; '));
             }
-            return response.status === 204 ? undefined : (await response.json()).data;
+            if (response.status === 204) return;
+            const page = await response.json();
+            return page.links?.next && query?.limit !== '1'
+              ? [...page.data, ...await apple(page.links.next)]
+              : page.data;
           }
 
           const [app] = await apple('/v1/apps', { query: { 'filter[bundleId]': 'com.tongyeoktalk' } });
@@ -68,11 +73,23 @@ jobs:
           const allGroups = await apple('/v1/betaGroups', {
             query: { 'filter[app]': app.id, limit: '200' },
           });
-          const automaticGroups = allGroups.filter(group => group.attributes.hasAccessToAllBuilds);
-          const current = await confirmGroups([...(await apple(targetPath + '/betaGroups')), ...automaticGroups]);
+          const eligibleGroups = await confirmGroups(allGroups);
+          async function groupsFor(build) {
+            const matching = [];
+            for (const group of eligibleGroups) {
+              if (group.attributes.hasAccessToAllBuilds) {
+                matching.push(group);
+                continue;
+              }
+              const builds = await apple('/v1/betaGroups/' + group.id + '/builds', { query: { limit: '200' } });
+              if (builds.some(candidate => candidate.id === build.id)) matching.push(group);
+            }
+            return matching;
+          }
+          const current = await groupsFor(target);
           if (!current.length) {
             const prior = await findBuild('1008');
-            const previousGroups = await confirmGroups(await apple('/v1/builds/' + prior.id + '/betaGroups'));
+            const previousGroups = await groupsFor(prior);
             if (!previousGroups.length) throw Error('Prior build has no internal group with testers');
             await apple(targetPath + '/relationships/betaGroups', {
               data: previousGroups.map(group => ({ type: 'betaGroups', id: group.id })),
@@ -83,7 +100,7 @@ jobs:
             const state = detail?.attributes.internalBuildState;
             console.log('Build 1012 internal state:', state);
             if (state === 'IN_BETA_TESTING') {
-              const confirmed = await confirmGroups([...(await apple(targetPath + '/betaGroups')), ...automaticGroups]);
+              const confirmed = await groupsFor(target);
               if (!confirmed.length) throw Error('No internal group with testers was verified');
               console.log('Build 1012 is active in TestFlight with an existing internal tester group');
               process.exit(0);
