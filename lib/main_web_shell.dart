@@ -20,6 +20,7 @@ class TongyeokWebShell extends StatefulWidget {
 }
 
 class _TongyeokWebShellState extends State<TongyeokWebShell> {
+  static final _entry = Uri.https('dntprbs-maker.github.io', '/tongyeok-talk/');
   late final WebViewController _controller;
   bool _loading = true;
   bool _failed = false;
@@ -42,8 +43,23 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             setState(() { _failed = true; _loading = false; });
           }
         },
-      ))
-      ..loadRequest(Uri.parse('https://dntprbs-maker.github.io/tongyeok-talk/'));
+      ));
+    _openPublishedApp();
+  }
+
+  Future<void> _openPublishedApp() async {
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    try {
+      // Revalidate the web entry, keeping the session and versioned assets.
+      await _controller.loadRequest(_entry, headers: const {
+        'Cache-Control': 'no-cache',
+      });
+    } catch (_) {
+      if (mounted) setState(() { _loading = false; _failed = true; });
+    }
   }
   @override
   Widget build(BuildContext context) {
@@ -54,7 +70,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       if (_failed) ColoredBox(color: Theme.of(context).scaffoldBackgroundColor,
         child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text(mongolian ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.' : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.'),
-          TextButton(onPressed: () => _controller.reload(), child: Text(mongolian ? 'Дахин оролдох' : '다시 시도')),
+          TextButton(onPressed: _openPublishedApp, child: Text(mongolian ? 'Дахин оролдох' : '다시 시도')),
         ]))),
       if (iosAdProbeEnabled && !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
         const Align(alignment: Alignment.bottomCenter, child: IosRewardAdProbe()),
