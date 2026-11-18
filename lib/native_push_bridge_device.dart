@@ -11,6 +11,7 @@ class NativePushBridgeDevice {
   static const _owner = 'tongyeok.shell.pushOwner';
   static const _device = 'tongyeok.shell.pushDevice';
   static const _token = 'tongyeok.shell.pushToken';
+  static const _confirmed = 'tongyeok.shell.pushConfirmed';
   Future<void>? _initialization;
 
   Future<void> _initialize() =>
@@ -30,6 +31,7 @@ class NativePushBridgeDevice {
       await messaging.deleteToken();
       await prefs.remove(_owner);
       await prefs.remove(_token);
+      await prefs.remove(_confirmed);
     }
     var device = prefs.getString(_device);
     if (device == null) {
@@ -41,8 +43,20 @@ class NativePushBridgeDevice {
       if (owner == uid) await messaging.deleteToken();
       await prefs.remove(_owner);
       await prefs.remove(_token);
+      await prefs.remove(_confirmed);
       return jsonEncode({'deviceId': device});
     }
+    // Enable is only a proposal. The authenticated web client acknowledges it
+    // after its own Firestore write succeeds. A timed-out permission prompt or
+    // navigation cannot otherwise leave a false "enabled" status behind.
+    if (action == 'confirm') {
+      if (prefs.getString(_owner) != uid || prefs.getString(_token) == null) {
+        throw StateError('push_failed');
+      }
+      await prefs.setBool(_confirmed, true);
+      return 'enabled';
+    }
+    if (action == 'enable') await prefs.remove(_confirmed);
     final settings =
         action == 'enable'
             ? await messaging.requestPermission(
@@ -58,11 +72,22 @@ class NativePushBridgeDevice {
         settings.authorizationStatus != AuthorizationStatus.provisional) {
       return 'off';
     }
-    if (await messaging.getAPNSToken() == null) return 'unsupported';
+    var apns = await messaging.getAPNSToken();
+    for (
+      var attempt = 0;
+      action == 'enable' && apns == null && attempt < 10;
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      apns = await messaging.getAPNSToken();
+    }
+    if (apns == null) return action == 'state' ? 'off' : 'unsupported';
     final token = await messaging.getToken();
     if (token == null) return 'off';
     if (action == 'state') {
-      return prefs.getString(_owner) == uid && prefs.getString(_token) == token
+      return prefs.getString(_owner) == uid &&
+              prefs.getString(_token) == token &&
+              prefs.getBool(_confirmed) == true
           ? 'enabled'
           : 'off';
     }

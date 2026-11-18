@@ -19,7 +19,7 @@ class NativePushRequest {
           nonce.length < 32 ||
           data['id'] is! String ||
           !RegExp(r'^p[1-9][0-9]{0,8}$').hasMatch(data['id'] as String) ||
-          !const ['state', 'enable', 'disable'].contains(data['action']) ||
+          !const ['state', 'enable', 'disable', 'confirm'].contains(data['action']) ||
           data['uid'] is! String ||
           !RegExp(r'^[A-Za-z0-9_-]{20,128}$').hasMatch(data['uid'] as String)) {
         return null;

@@ -12,7 +12,7 @@ void main() {
     String user = uid,
   }) => jsonEncode({'id': 'p1', 'nonce': key, 'action': action, 'uid': user});
   test('known operations from the trusted page are accepted', () {
-    for (final action in ['state', 'enable', 'disable']) {
+    for (final action in ['state', 'enable', 'disable', 'confirm']) {
       expect(
         NativePushRequest.parse(request(action: action), nonce, page)?.action,
         action,

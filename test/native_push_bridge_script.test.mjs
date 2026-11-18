@@ -9,7 +9,7 @@ const script=dart.match(/const _nativePushScript = r'''([\s\S]*?)''';/)[1].repla
 const uid='QA_user_12345678901234567890';
 function fixture(subframe=false){
   const requests=[],timers=new Map();let next=0;
-  const window={TongyeokNativePush:{postMessage:raw=>requests.push(JSON.parse(raw))}};
+  const window={tongyeokNativePushProtocolVersion:1,TongyeokNativePush:{postMessage:raw=>requests.push(JSON.parse(raw))}};
   window.top=subframe?{}:window;
   vm.runInNewContext(script,{window,setTimeout:f=>{timers.set(++next,f);return next;},clearTimeout:i=>timers.delete(i)});
   return {window,requests,timers};
@@ -54,4 +54,16 @@ test('a repeated page-finished event preserves outstanding requests',async()=>{
   complete(nonce,requests[0].id,'enabled',null);
   assert.equal(await p,'enabled');
   assert.equal(timers.size,0);
+});
+test('old web clients do not activate the native bridge without confirmation support',()=>{
+  const window={TongyeokNativePush:{postMessage(){throw Error('must not run');}}};window.top=window;
+  vm.runInNewContext(script,{window});
+  assert.equal(window.tongyeokPushEnable,undefined);
+});
+test('confirmation is a separate request after subscription registration',async()=>{
+  const {window:w,requests}=fixture();
+  const p=w.tongyeokPushConfirm(uid);
+  assert.equal(requests[0].action,'confirm');
+  w.__tongyeokNativePushComplete(nonce,requests[0].id,'enabled',null);
+  assert.equal(await p,'enabled');
 });

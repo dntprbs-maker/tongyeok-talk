@@ -5,7 +5,8 @@ String nativePushBridgeScript(String nonce) =>
 
 const _nativePushScript = r'''
 (() => {
-  if (window !== window.top || !window.TongyeokNativePush || window.__tongyeokNativePushComplete) return;
+  if (window !== window.top || window.tongyeokNativePushProtocolVersion !== 1 ||
+      !window.TongyeokNativePush || window.__tongyeokNativePushComplete) return;
   const nonce = __NONCE_JSON__;
   let sequence = 0;
   const pending = new Map();
@@ -27,6 +28,7 @@ const _nativePushScript = r'''
   window.tongyeokPushState = uid => request('state', uid);
   window.tongyeokPushEnable = uid => request('enable', uid);
   window.tongyeokPushDisable = uid => request('disable', uid);
+  window.tongyeokPushConfirm = uid => request('confirm', uid);
   // A native app uses its own notification permission, not Safari's PWA flow.
   window.tongyeokAppleMobile = false;
 })();
