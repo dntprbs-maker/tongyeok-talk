@@ -51,6 +51,7 @@ jobs:
           info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
           info["UIRequiresFullScreen"] = True
           info["FlutterDeepLinkingEnabled"] = False
+          info["ITSAppUsesNonExemptEncryption"] = False
           info.setdefault("CFBundleURLTypes", []).append({
               "CFBundleTypeRole": "Editor",
               "CFBundleURLSchemes": ["tongyeoktalk"],
