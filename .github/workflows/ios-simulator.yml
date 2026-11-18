@@ -26,17 +26,23 @@ jobs:
         run: |
           flutter create --platforms=ios --org com.tongyeoktalk --project-name tongyeok_shell "$RUNNER_TEMP/ios-shell"
           cp lib/main_web_shell.dart lib/mobile_web_navigation.dart lib/ios_reward_ad_probe.dart "$RUNNER_TEMP/ios-shell/lib/"
+          cp lib/native_push_bridge_*.dart lib/firebase_options.dart "$RUNNER_TEMP/ios-shell/lib/"
           mkdir -p "$RUNNER_TEMP/ios-shell/test"
           sed 's/package:bridgechat/package:tongyeok_shell/g' test/mobile_web_navigation_test.dart > "$RUNNER_TEMP/ios-shell/test/mobile_web_navigation_test.dart"
+          sed 's/package:bridgechat/package:tongyeok_shell/g' test/native_push_bridge_protocol_test.dart > "$RUNNER_TEMP/ios-shell/test/native_push_bridge_protocol_test.dart"
           cd "$RUNNER_TEMP/ios-shell"
           python3 -c 'from pathlib import Path; p=Path("pubspec.yaml"); s=p.read_text(); s=s.replace("  flutter:\n    sdk: flutter\n", "  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n", 1); p.write_text(s)'
           flutter pub add webview_flutter:4.14.1
           flutter pub add google_mobile_ads:9.2.0
+          flutter pub add firebase_core:3.15.2 firebase_messaging:15.2.10 shared_preferences:2.5.3
           /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-3940256099942544~1458002511' ios/Runner/Info.plist
       - name: Test web navigation rules
-        run: cd "$RUNNER_TEMP/ios-shell" && flutter test test/mobile_web_navigation_test.dart
+        run: |
+          node --test test/native_push_bridge_script.test.mjs
+          cd "$RUNNER_TEMP/ios-shell"
+          flutter test test/mobile_web_navigation_test.dart test/native_push_bridge_protocol_test.dart
       - name: Build unsigned iOS simulator prototype
-        run: cd "$RUNNER_TEMP/ios-shell" && flutter build ios --simulator --debug --no-codesign --dart-define=TONGYEOK_IOS_AD_PROBE=true --dart-define=TONGYEOK_IOS_AD_AUTO_TEST=true -t lib/main_web_shell.dart
+        run: cd "$RUNNER_TEMP/ios-shell" && flutter build ios --simulator --debug --no-codesign --dart-define=TONGYEOK_IOS_NATIVE_PUSH=true --dart-define=TONGYEOK_IOS_AD_PROBE=true --dart-define=TONGYEOK_IOS_AD_AUTO_TEST=true -t lib/main_web_shell.dart
       - name: Start prototype in an iPhone simulator
         run: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if "iPhone" in d["name"]))')
