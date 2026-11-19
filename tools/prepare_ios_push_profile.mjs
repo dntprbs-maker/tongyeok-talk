@@ -38,7 +38,7 @@ async function main() {
   const certs=signingCertificates(await apple('/v1/certificates',{limit:'200'}),encoded);
   const name='Tongyeok Talk Push TestFlight 20261119';
   const profiles=await apple(`/v1/bundleIds/${bundle.id}/profiles`,{limit:'200'});
-  let profile=profiles.find(x=>x.attributes.name===name && x.attributes.profileState==='ACTIVE');
+  let profile=profiles.find(x=>[name,'Tongyeok Talk TestFlight'].includes(x.attributes.name) && x.attributes.profileState==='ACTIVE');
   if(profile) {
     const attached=await apple(`/v1/profiles/${profile.id}/certificates`);
     if(!certs.every(x=>attached.some(y=>y.id===x.id)))throw Error('existing_push_profile_certificate_mismatch');
