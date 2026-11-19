@@ -55,6 +55,11 @@ jobs:
           rm test/widget_test.dart
           cp "$GITHUB_WORKSPACE/pubspec.yaml" "$GITHUB_WORKSPACE/pubspec.lock" .
           cp -R "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/lib" "$GITHUB_WORKSPACE/test" .
+          # Use the existing approved Tongyeok artwork for every generated iOS
+          # icon size rather than shipping Flutter's template icon.
+          python3 "$GITHUB_WORKSPACE/tools/prepare_ios_release_icons.py" \
+            "$GITHUB_WORKSPACE/assets/images/interpreter-talk.png" \
+            ios/Runner/Assets.xcassets/AppIcon.appiconset
           python3 - <<'PY'
           import os
           import plistlib

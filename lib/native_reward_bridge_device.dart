@@ -9,6 +9,8 @@ class NativeRewardBridgeDevice {
   Future<void>? _initialization;
 
   Future<void> _prepare() async {
+    // Keep ads contextual and disable the SDK's publisher first-party ID.
+    await MobileAds.instance.setSameAppKeyEnabled(false);
     final updated = Completer<void>();
     ConsentInformation.instance.requestConsentInfoUpdate(
       ConsentRequestParameters(),
