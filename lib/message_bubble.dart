@@ -9,7 +9,7 @@ class MessageBubble extends StatefulWidget {
   final String? sourceLang, targetLang;
   final String translationStatus;
   final bool sent, read;
-  final VoidCallback? onRetry;
+  final VoidCallback? onRetry, onReportTranslation;
   const MessageBubble({
     super.key,
     required this.senderId,
@@ -23,6 +23,7 @@ class MessageBubble extends StatefulWidget {
     this.sent = true,
     this.read = false,
     this.onRetry,
+    this.onReportTranslation,
   });
 
   @override
@@ -88,9 +89,13 @@ class _MessageBubbleState extends State<MessageBubble> {
                 values[language] ??
                 tr(
                   context,
-                  widget.translationStatus == 'failed'
-                      ? 'translationFailed'
-                      : 'translationPending',
+                  switch (widget.translationStatus) {
+                    'failed' => 'translationFailed',
+                    'no_credit' => 'creditNoBalance',
+                    'no_day_pass' => 'adPairNeedsPass',
+                    'unavailable' => 'creditUnavailable',
+                    _ => 'translationPending',
+                  },
                 ),
           ),
         ],
@@ -147,12 +152,14 @@ class _MessageBubbleState extends State<MessageBubble> {
             crossAxisAlignment:
                 mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              bubble,
+              GestureDetector(onLongPress: widget.onReportTranslation, child: bubble),
               Wrap(
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 alignment: mine ? WrapAlignment.end : WrapAlignment.start,
                 children: [
+                  if (widget.onReportTranslation != null)
+                    IconButton(onPressed: widget.onReportTranslation, tooltip: tr(context, 'reportTranslation'), icon: const Icon(Icons.flag_outlined, size: 18)),
                   Padding(
                     padding: const EdgeInsets.only(top: 2, left: 3, right: 3),
                     child: Text(

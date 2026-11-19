@@ -22,5 +22,5 @@ void main() {
     await tester.enterText(find.byType(TextField), '');
     expect(field.controller.text, '010-');
     expect(field.controller.selection.baseOffset, 4);
-  });
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 }

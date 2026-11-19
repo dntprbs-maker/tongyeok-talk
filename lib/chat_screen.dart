@@ -36,6 +36,7 @@ class ChatScreenState extends State<ChatScreen>
   bool _isInitialLoad = true;
   bool _isGroupChat = false;
   bool _sending = false;
+  int _messageLimit = 2000;
   Timestamp? _visibleThrough, _markedThrough;
   bool _marking = false;
   final Map<String, Timestamp> _receipts = {};
@@ -149,16 +150,39 @@ class ChatScreenState extends State<ChatScreen>
     if (data == null) return;
 
     _isGroupChat = (data['isGroup'] ?? false) as bool;
+    final participants = List<String>.from(data['participants'] as List? ?? []);
+    if (participants.length != 2) return;
+    final profiles = await Future.wait(
+      participants.map(
+        (uid) => FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      ),
+    );
+    final languages = <String>{};
+    for (final profile in profiles) {
+      final value = profile.data();
+      if (value?['rewardAdEnabled'] != true) return;
+      final language = value?['preferredLanguage'];
+      if (language is String) languages.add(language);
+    }
+    if (languages.containsAll(['Korean', 'Mongolian'])) _messageLimit = 50;
   }
 
   Future<void> _sendMessage() async {
     if (_sending) return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
-    if (text.length > 2000) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(tr(context, 'messageTooLong'))));
+    if ((_messageLimit == 50 ? text.runes.length : text.length) >
+        _messageLimit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            tr(
+              context,
+              _messageLimit == 50 ? 'adMessageTooLong' : 'messageTooLong',
+            ),
+          ),
+        ),
+      );
       return;
     }
     setState(() => _sending = true);
@@ -189,6 +213,56 @@ class ChatScreenState extends State<ChatScreen>
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _reportTranslation(Map<String, dynamic> msg, String translation) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(tr(context, 'reportTranslation')),
+        content: Text(tr(context, 'reportTranslationConfirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(tr(context, 'cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(tr(context, 'reportTranslation')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final db = FirebaseFirestore.instance;
+    final report = db.collection('conversations').doc(widget.conversationId)
+        .collection('messages').doc(msg['id'] as String)
+        .collection('translationReports').doc(_currentUser.uid);
+    final source = msg['sourceLang'] as String;
+    try {
+      final added = await db.runTransaction((tx) async {
+        if ((await tx.get(report)).exists) return false;
+        tx.set(report, {
+          'original': msg['originalText'],
+          'source': source,
+          'target': source == 'ko' ? 'mn' : 'ko',
+          'translation': translation,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(tr(context, added ? 'translationReportSent' : 'translationReportExists')),
+        ));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(tr(context, errorKey(error))),
+        ));
+      }
     }
   }
 
@@ -378,6 +452,11 @@ class ChatScreenState extends State<ChatScreen>
         }
         WidgetsBinding.instance.addPostFrameCallback((_) => _markVisibleRead());
 
+        final previousNewest = _msgList.isEmpty ? null : _msgList.last;
+        final nearBottom =
+            !_scrollController.hasClients ||
+            _scrollController.position.extentAfter < 100;
+
         // Build local list
         _msgList =
             docs.map((doc) {
@@ -408,6 +487,7 @@ class ChatScreenState extends State<ChatScreen>
                 'targetLang': targetLang,
                 'id': doc.id,
                 'translationStatus': status,
+                'creditManaged': data['creditManaged'] == true,
                 'sent': !doc.metadata.hasPendingWrites,
                 'read': isMe && others > 0,
                 'retryAllowed':
@@ -416,17 +496,19 @@ class ChatScreenState extends State<ChatScreen>
               };
             }).toList();
 
-        // Older-page loads and translation/receipt updates must not yank the
-        // reader away from history. Follow new messages only near the bottom.
-        final newest = docs.last.id;
-        if (newest != _newestShown) {
-          final follow =
-              _newestShown == null ||
-              !_scrollController.hasClients ||
-              _scrollController.position.extentAfter < 100;
-          _newestShown = newest;
-          if (follow) _scrollToBottom();
+        // Follow the latest message near the bottom when its translation
+        // changes the row height or adds the language button.
+        final newest = _msgList.last;
+        final newestId = docs.last.id;
+        final newestChanged =
+            newestId != _newestShown ||
+            previousNewest?['translationStatus'] !=
+                newest['translationStatus'] ||
+            previousNewest?['translatedText'] != newest['translatedText'];
+        if (_newestShown == null || (nearBottom && newestChanged)) {
+          _scrollToBottom();
         }
+        _newestShown = newestId;
 
         return Center(
           child: ConstrainedBox(
@@ -478,27 +560,53 @@ class ChatScreenState extends State<ChatScreen>
                   }
                 }
 
-                final bubble = MessageBubble(
-                  key: ValueKey(msg['id']),
-                  senderId: msg['senderId'] as String,
-                  currentUserId: _currentUser.uid,
-                  originalText: msg['originalText'] as String,
-                  translatedText: msg['translatedText'] as String,
-                  timestamp: dt,
-                  sourceLang: msg['sourceLang'] as String?,
-                  targetLang: msg['targetLang'] as String?,
-                  translationStatus: msg['translationStatus'] as String,
-                  sent: msg['sent'] as bool,
-                  read: msg['read'] as bool,
-                  onRetry:
-                      (msg['retryAllowed'] == true ||
-                                  (msg['translationStatus'] == 'pending' &&
-                                      DateTime.now().difference(dt).inSeconds >
-                                          60)) &&
-                              !_retrying.contains(msg['id'])
-                          ? () => _retryTranslation(msg['id'] as String)
+                Widget buildBubble(String translation, String status) =>
+                    MessageBubble(
+                      key: ValueKey(msg['id']),
+                      senderId: msg['senderId'] as String,
+                      currentUserId: _currentUser.uid,
+                      originalText: msg['originalText'] as String,
+                      translatedText: translation,
+                      timestamp: dt,
+                      sourceLang: msg['sourceLang'] as String?,
+                      targetLang: msg['targetLang'] as String?,
+                      translationStatus: status,
+                      sent: msg['sent'] as bool,
+                      read: msg['read'] as bool,
+                      onReportTranslation: status == 'done' &&
+                              translation.trim().isNotEmpty &&
+                              msg['sourceLang'] != msg['targetLang']
+                          ? () => _reportTranslation(msg, translation)
                           : null,
-                );
+                      onRetry:
+                          (msg['retryAllowed'] == true ||
+                                      (msg['translationStatus'] == 'pending' &&
+                                          DateTime.now()
+                                                  .difference(dt)
+                                                  .inSeconds >
+                                              60)) &&
+                                  !_retrying.contains(msg['id'])
+                              ? () => _retryTranslation(msg['id'] as String)
+                              : null,
+                    );
+
+                final bubble =
+                    msg['creditManaged'] == true
+                        ? _CreditTranslation(
+                          key: ValueKey(msg['id']),
+                          access: FirebaseFirestore.instance
+                              .collection('conversations')
+                              .doc(widget.conversationId)
+                              .collection('messages')
+                              .doc(msg['id'] as String)
+                              .collection('creditTranslations')
+                              .doc(_currentUser.uid),
+                          builder: buildBubble,
+                        )
+                        : buildBubble(
+                          msg['translatedText'] as String,
+                          msg['translationStatus'] as String,
+                        );
 
                 if (dayMarker != null) {
                   return Column(
@@ -598,10 +706,10 @@ class ChatScreenState extends State<ChatScreen>
                     required isFocused,
                     required maxLength,
                   }) =>
-                      currentLength >= 1800
+                      _messageLimit == 50 || currentLength >= 1800
                           ? Text('$currentLength/$maxLength')
                           : null,
-              maxLength: 2000,
+              maxLength: _messageLimit,
               enabled: !_sending,
               onTap: _scrollToBottom,
             ),
@@ -615,4 +723,45 @@ class ChatScreenState extends State<ChatScreen>
       ),
     );
   }
+}
+
+class _CreditTranslation extends StatefulWidget {
+  const _CreditTranslation({
+    super.key,
+    required this.access,
+    required this.builder,
+  });
+
+  final DocumentReference<Map<String, dynamic>> access;
+  final Widget Function(String translation, String status) builder;
+
+  @override
+  State<_CreditTranslation> createState() => _CreditTranslationState();
+}
+
+class _CreditTranslationState extends State<_CreditTranslation> {
+  late Stream<DocumentSnapshot<Map<String, dynamic>>> _updates =
+      widget.access.snapshots();
+
+  @override
+  void didUpdateWidget(covariant _CreditTranslation oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.access != oldWidget.access) {
+      _updates = widget.access.snapshots();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder(
+    stream: _updates,
+    builder: (context, snapshot) {
+      final data = snapshot.data?.data();
+      return widget.builder(
+        data?['translation'] as String? ?? '',
+        snapshot.hasError
+            ? 'unavailable'
+            : data?['status'] as String? ?? 'pending',
+      );
+    },
+  );
 }
