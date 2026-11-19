@@ -216,29 +216,37 @@ class ChatScreenState extends State<ChatScreen>
     }
   }
 
-  Future<void> _reportTranslation(Map<String, dynamic> msg, String translation) async {
+  Future<void> _reportTranslation(
+    Map<String, dynamic> msg,
+    String translation,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(tr(context, 'reportTranslation')),
-        content: Text(tr(context, 'reportTranslationConfirm')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(tr(context, 'cancel')),
+      builder:
+          (context) => AlertDialog(
+            title: Text(tr(context, 'reportTranslation')),
+            content: Text(tr(context, 'reportTranslationConfirm')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(tr(context, 'cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(tr(context, 'reportTranslation')),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(tr(context, 'reportTranslation')),
-          ),
-        ],
-      ),
     );
     if (confirmed != true || !mounted) return;
     final db = FirebaseFirestore.instance;
-    final report = db.collection('conversations').doc(widget.conversationId)
-        .collection('messages').doc(msg['id'] as String)
-        .collection('translationReports').doc(_currentUser.uid);
+    final report = db
+        .collection('conversations')
+        .doc(widget.conversationId)
+        .collection('messages')
+        .doc(msg['id'] as String)
+        .collection('translationReports')
+        .doc(_currentUser.uid);
     final source = msg['sourceLang'] as String;
     try {
       final added = await db.runTransaction((tx) async {
@@ -253,15 +261,22 @@ class ChatScreenState extends State<ChatScreen>
         return true;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(tr(context, added ? 'translationReportSent' : 'translationReportExists')),
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tr(
+                context,
+                added ? 'translationReportSent' : 'translationReportExists',
+              ),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(tr(context, errorKey(error))),
-        ));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(tr(context, errorKey(error)))));
       }
     }
   }
@@ -573,13 +588,16 @@ class ChatScreenState extends State<ChatScreen>
                       translationStatus: status,
                       sent: msg['sent'] as bool,
                       read: msg['read'] as bool,
-                      onReportTranslation: status == 'done' &&
-                              translation.trim().isNotEmpty &&
-                              msg['sourceLang'] != msg['targetLang']
-                          ? () => _reportTranslation(msg, translation)
-                          : null,
+                      onReportTranslation:
+                          status == 'done' &&
+                                  translation.trim().isNotEmpty &&
+                                  msg['sourceLang'] != msg['targetLang']
+                              ? () => _reportTranslation(msg, translation)
+                              : null,
                       onRetry:
-                          (msg['retryAllowed'] == true ||
+                          ((status == 'failed' &&
+                                          (msg['creditManaged'] == true ||
+                                              msg['retryAllowed'] == true)) ||
                                       (msg['translationStatus'] == 'pending' &&
                                           DateTime.now()
                                                   .difference(dt)

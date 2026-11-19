@@ -50782,7 +50782,9 @@ else return i},
 $S:572}
 A.adw.prototype={
 $2(a,b){var s,r="sourceLang",q="targetLang",p=this.b,o=p.h(0,"id"),n=A.ax(p.h(0,"senderId")),m=this.a,l=A.ax(p.h(0,"originalText")),k=this.c,j=A.aa(p.h(0,r)),i=A.aa(p.h(0,q)),h=A.e0(p.h(0,"sent")),g=A.e0(p.h(0,"read")),f=b==="done"&&B.c.fg(a).length!==0&&!J.c(p.h(0,r),p.h(0,q))?new A.adq(m,p,a):null
-if(!J.c(p.h(0,"retryAllowed"),!0))s=J.c(p.h(0,"translationStatus"),"pending")&&B.e.du(new A.dD(Date.now(),0,!1).hs(k).a,1e6)>60
+if(b==="failed")s=J.c(p.h(0,"creditManaged"),!0)||J.c(p.h(0,"retryAllowed"),!0)
+else s=!1
+if(!s)s=J.c(p.h(0,"translationStatus"),"pending")&&B.e.du(new A.dD(Date.now(),0,!1).hs(k).a,1e6)>60
 else s=!0
 p=s&&!m.ch.n(0,p.h(0,"id"))?new A.adr(m,p):null
 return new A.Eg(n,m.f.a.c.a.a,l,a,k,j,i,b,h,g,p,f,new A.cJ(o,t.Nf))},
