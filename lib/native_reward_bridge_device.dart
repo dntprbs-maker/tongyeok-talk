@@ -13,7 +13,10 @@ class NativeRewardBridgeDevice {
     ConsentInformation.instance.requestConsentInfoUpdate(
       ConsentRequestParameters(),
       () => updated.complete(),
-      (_) => updated.completeError(StateError('adConsentFailed')),
+      (error) {
+        debugPrint('TT_IOS_AD_CONSENT_UPDATE_FAILED code=${error.errorCode}');
+        updated.completeError(StateError('adConsentFailed'));
+      },
     );
     await updated.future.timeout(const Duration(seconds: 30));
     final form = Completer<void>();
@@ -21,11 +24,13 @@ class NativeRewardBridgeDevice {
       if (error == null) {
         form.complete();
       } else {
+        debugPrint('TT_IOS_AD_CONSENT_FORM_FAILED');
         form.completeError(StateError('adConsentFailed'));
       }
     });
     await form.future.timeout(const Duration(seconds: 60));
     if (!await ConsentInformation.instance.canRequestAds()) {
+      debugPrint('TT_IOS_AD_CONSENT_NOT_READY');
       throw StateError('adConsentFailed');
     }
     _initialization ??= MobileAds.instance.initialize().then((_) {});
@@ -71,7 +76,8 @@ class NativeRewardBridgeDevice {
               loaded.complete(value);
             }
           },
-          onAdFailedToLoad: (_) {
+          onAdFailedToLoad: (error) {
+            debugPrint('TT_IOS_AD_LOAD_FAILED code=${error.code}');
             if (!loaded.isCompleted) {
               loaded.completeError(StateError('adLoadFailed'));
             }
@@ -109,9 +115,11 @@ class NativeRewardBridgeDevice {
         onUserEarnedReward: (_, reward) {
           earned = true;
           if (kDebugMode) {
-            debugPrint(request.testAds
-                ? 'TT_IOS_NATIVE_REWARD_SAMPLE_EARNED_NO_CREDIT'
-                : 'TT_IOS_NATIVE_REWARD_EARNED_WAIT_SERVER');
+            debugPrint(
+              request.testAds
+                  ? 'TT_IOS_NATIVE_REWARD_SAMPLE_EARNED_NO_CREDIT'
+                  : 'TT_IOS_NATIVE_REWARD_EARNED_WAIT_SERVER',
+            );
           }
         },
       );
