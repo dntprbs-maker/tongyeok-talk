@@ -26,7 +26,7 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _error;
 
   bool get _socialAvailable =>
-      kIsWeb || defaultTargetPlatform == TargetPlatform.iOS;
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   Future<void> _submitSocial({required bool apple}) async {
     if (_busy) return;
@@ -132,7 +132,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             _busy ? null : () => _submitSocial(apple: false),
                         child: Text(tr(context, 'googleSignIn')),
                       ),
-                      if (!kIsWeb) FilledButton.icon(
+                      FilledButton.icon(
                         onPressed:
                             _busy ? null : () => _submitSocial(apple: true),
                         icon: const Icon(Icons.apple),

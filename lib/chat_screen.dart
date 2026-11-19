@@ -10,6 +10,7 @@ import 'app_language.dart';
 import 'ui_errors.dart';
 import 'read_receipts.dart';
 import 'message_history.dart';
+import 'safety_controls.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -314,6 +315,20 @@ class ChatScreenState extends State<ChatScreen>
                           '${tr(context, 'preview')}\n\n${tr(context, 'chatDeliveryNotice')}',
                         ),
                       ),
+                ),
+          ),
+          IconButton(
+            tooltip: tr(context, 'safetyTitle'),
+            icon: const Icon(Icons.shield_outlined, size: 21),
+            onPressed:
+                () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (_) => SafetyControls(
+                          conversationId: widget.conversationId,
+                        ),
+                  ),
                 ),
           ),
           if (_isGroupChat)

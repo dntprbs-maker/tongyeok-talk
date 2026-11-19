@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'referral_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +9,8 @@ import 'push_service.dart';
 import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
 import 'translation_wallet.dart';
+import 'account_deletion_screen.dart';
+import 'session_sign_out.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool showNotifications;
@@ -124,6 +127,24 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  Future<void> _signOut() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await signOutSession(
+        disableNotifications: PushService.disable,
+        signOut: FirebaseAuth.instance.signOut,
+      );
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = errorKey(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -144,6 +165,17 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                ListTile(
+                  leading: const Icon(Icons.card_giftcard_outlined),
+                  title: Text(referralLabel(context)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:
+                      () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => const ReferralScreen(),
+                        ),
+                      ),
+                ),
                 Text(
                   tr(context, 'account'),
                   style: Theme.of(context).textTheme.titleMedium,
@@ -282,20 +314,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const Divider(height: 32),
                 const SizedBox(height: 32),
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined),
+                  title: Text(tr(context, 'deletionTitle')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:
+                      _busy
+                          ? null
+                          : () => Navigator.push<void>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AccountDeletionScreen(),
+                            ),
+                          ),
+                ),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: Text(tr(context, 'signOut')),
-                  onPressed: () async {
-                    await PushService.disable();
-                    await FirebaseAuth.instance.signOut();
-                    if (context.mounted) {
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        '/',
-                        (_) => false,
-                      );
-                    }
-                  },
+                  onPressed: _busy ? null : _signOut,
                 ),
               ],
             ),

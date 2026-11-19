@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_language.dart';
 import 'auth_service.dart';
 import 'phone_identity.dart';
+import 'referral_screen.dart';
 
 class RegisterPhoneScreen extends StatefulWidget {
   const RegisterPhoneScreen({super.key});
@@ -29,7 +30,11 @@ class _RegisterPhoneScreenState extends State<RegisterPhoneScreen> {
       _error = null;
     });
     try {
-      await AuthService().registerPhone(PhoneIdentity.parse(_number.text));
+      final phone = PhoneIdentity.parse(_number.text);
+      final code = await pendingReferral();
+      if (code != null) await referralRequest('register', code: code);
+      await AuthService().registerPhone(phone);
+      if (code != null) await clearReferral();
       if (mounted) {
         Navigator.pushNamedAndRemoveUntil(
           context,
@@ -43,6 +48,12 @@ class _RegisterPhoneScreenState extends State<RegisterPhoneScreen> {
         _error = switch (error) {
           FormatException() => 'registrationPhoneInvalid',
           StateError(message: 'phoneInUse') => 'phoneInUse',
+          StateError(message: 'invalid_referral_code') =>
+            'invalid_referral_code',
+          StateError(message: 'referral_role_mismatch') =>
+            'referral_role_mismatch',
+          StateError(message: 'referral_already_registered') =>
+            'referral_already_registered',
           _ => 'registrationFailed',
         };
         _busy = false;
@@ -72,7 +83,7 @@ class _RegisterPhoneScreenState extends State<RegisterPhoneScreen> {
           ),
           if (_error != null)
             Text(
-              tr(context, _error!),
+              referralRegistrationError(context, _error!),
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           const SizedBox(height: 16),

@@ -27,6 +27,7 @@ class PushService {
             'language': AppLanguage.instance.code,
             'updatedAt': FieldValue.serverTimestamp(),
           });
+      await platform.confirmPush(uid);
       return 'enabled';
     } catch (_) {
       await platform.disablePush(uid);

@@ -6,6 +6,15 @@ external JSPromise<JSString> _enable(JSString uid);
 external JSPromise<JSString> _disable(JSString uid);
 @JS('tongyeokPushState')
 external JSPromise<JSString> _state(JSString uid);
+@JS('tongyeokPushConfirm')
+external JSFunction? get _confirm;
+Future<void> confirmPush(String uid) async {
+  final confirm = _confirm;
+  if (confirm != null) {
+    await (confirm.callAsFunction(null, uid.toJS) as JSPromise<JSAny?>).toDart;
+  }
+}
+
 Future<String> enablePush(String uid) async =>
     (await _enable(uid.toJS).toDart).toDart;
 Future<String> disablePush(String uid) async =>

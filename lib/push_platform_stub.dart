@@ -5,3 +5,4 @@ Future<String> disablePush(String uid) async => 'unsupported';
 Future<String> pushState(String uid) async => 'unsupported';
 
 bool get appleMobile => defaultTargetPlatform == TargetPlatform.iOS;
+Future<void> confirmPush(String uid) async {}

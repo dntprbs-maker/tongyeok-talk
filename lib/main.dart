@@ -16,10 +16,12 @@ import 'app_language.dart';
 import 'brand.dart';
 import 'read_receipts.dart';
 import 'chat_display_preferences.dart';
+import 'referral_screen.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeReferralLinks();
   await AppLanguage.instance.initialize();
   await ChatDisplayPreferences.instance.initialize();
   await initializeDateFormatting('ko');
