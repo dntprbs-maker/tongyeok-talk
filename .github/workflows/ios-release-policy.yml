@@ -1,0 +1,42 @@
+name: Set Tongyeok approved release policy
+on:
+  push:
+    branches: [codex/ios-push-prep-20261119]
+    paths: [.github/workflows/ios-release-policy.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+    steps:
+      - name: Set and verify automatic release after approval only
+        run: |
+          node --input-type=module <<'JS'
+          import {sign} from 'node:crypto';
+          const enc = x => Buffer.from(JSON.stringify(x)).toString('base64url');
+          async function apple(path, method='GET', data) {
+            const now = Math.floor(Date.now()/1000);
+            const input = enc({alg:'ES256',kid:process.env.ASC_KEY_ID,typ:'JWT'})+'.'+enc({iss:process.env.ASC_ISSUER_ID,iat:now,exp:now+300,aud:'appstoreconnect-v1'});
+            const signature = sign('sha256',Buffer.from(input),{key:process.env.ASC_KEY,dsaEncoding:'ieee-p1363'}).toString('base64url');
+            const response = await fetch('https://api.appstoreconnect.apple.com'+path,{method,headers:{Authorization:'Bearer '+input+'.'+signature,'Content-Type':'application/json'},body:data?JSON.stringify({data}):undefined});
+            if(!response.ok) throw Error('Apple API '+response.status+' at '+path.split('?')[0]);
+            return (await response.json()).data;
+          }
+          const app = await apple('/v1/apps/6834760087');
+          if(app.attributes.bundleId!=='com.tongyeoktalk') throw Error('Unexpected app');
+          const versions = await apple('/v1/apps/'+app.id+'/appStoreVersions?filter[platform]=IOS');
+          const candidates = versions.filter(v=>v.attributes.versionString==='1.0'&&v.attributes.appStoreState==='PREPARE_FOR_SUBMISSION');
+          if(candidates.length!==1) throw Error('Expected one existing 1.0 preparation version');
+          const version = candidates[0];
+          console.log(JSON.stringify({version:version.attributes.versionString,state:version.attributes.appStoreState,previousReleaseType:version.attributes.releaseType}));
+          if(version.attributes.releaseType!=='AFTER_APPROVAL') await apple('/v1/appStoreVersions/'+version.id,'PATCH',{type:'appStoreVersions',id:version.id,attributes:{releaseType:'AFTER_APPROVAL'}});
+          const verified = await apple('/v1/appStoreVersions/'+version.id);
+          if(verified.attributes.releaseType!=='AFTER_APPROVAL'||verified.attributes.appStoreState!=='PREPARE_FOR_SUBMISSION') throw Error('Release policy verification failed');
+          console.log(JSON.stringify({version:verified.attributes.versionString,state:verified.attributes.appStoreState,releaseType:verified.attributes.releaseType,submitted:false,immediatelyReleased:false}));
+          JS
