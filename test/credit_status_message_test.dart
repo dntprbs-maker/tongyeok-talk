@@ -25,4 +25,13 @@ void main() {
       expect(find.textContaining(AppLanguage.instance.text('translationPending'), findRichText: true), findsNothing);
     });
   }
+  testWidgets('completed same-language messages never show a pending translation', (t) async {
+    await t.pumpWidget(LanguageScope(child: MaterialApp(home: Scaffold(body: MessageBubble(
+      senderId: 'sender', currentUserId: 'recipient', originalText: '감사합니다.',
+      translatedText: '', sourceLang: 'ko', targetLang: 'mn',
+      timestamp: DateTime(2026, 11, 19), translationStatus: 'done',
+    )))));
+    expect(find.textContaining('감사합니다.', findRichText: true), findsOneWidget);
+    expect(find.textContaining(AppLanguage.instance.text('translationPending'), findRichText: true), findsNothing);
+  });
 }

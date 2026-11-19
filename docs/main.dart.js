@@ -51086,7 +51086,8 @@ n.toString
 m.m(0,n,p.f)}p=m.h(0,r)==null
 l=!p
 n=!$.va().a
-k=!n||a1.d||p
+if(!n||a1.d||p)k=a1.a.y!=="done"||m.aA(q)
+else k=!1
 j=a4?B.o:B.VA
 p=new A.aGh(a1,a5,o,a4?B.o.yZ(0.8):B.Vf,m,j)
 i=a4?B.VE:B.o

@@ -70,7 +70,8 @@ class _MessageBubbleState extends State<MessageBubble> {
     final primaryReady = values[primary] != null;
     final always = ChatDisplayPreferences.instance.showOtherLanguage;
     // Never hide the only available original while waiting for translation.
-    final showSecondary = always || _expanded || !primaryReady;
+    final showSecondary = (always || _expanded || !primaryReady) &&
+        (widget.translationStatus != 'done' || values.containsKey(secondary));
     final color = mine ? Colors.white : const Color(0xFF172635);
     final muted =
         mine ? Colors.white.withValues(alpha: 0.8) : const Color(0xFF4C5E6E);
