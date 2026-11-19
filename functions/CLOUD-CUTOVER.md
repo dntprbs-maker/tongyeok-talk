@@ -52,3 +52,26 @@ Run a fresh dedicated Firestore emulator on 127.0.0.1:8766, then:
 
 The emulator rules fixture is the preserved current PC worker's rules snapshot;
 it is not a command to replace deployed security rules.
+
+## Verified cutover — 2026-11-19 KST
+
+- Explicit credential transfer and FCM send permission approvals received.
+- Both existing secrets stored in this project's Secret Manager; accessor granted
+  only on those secrets to the existing server account.
+- Custom project role `tongyeokNotificationSender` contains only
+  `cloudmessaging.messages.create`. Broad FCM admin role was not granted.
+- Eventarc account has `roles/run.invoker` on the five new services individually;
+  no public invocation binding was added.
+- All five new functions ACTIVE. Existing reward/referral update times unchanged.
+- PC worker PIDs 5772/38476 stopped; final ledger 71 calls / USD0.003672418
+  migrated once. Cloud enabled at 2026-11-19T13:42:25Z; no cutover-gap messages.
+- Actual cloud tests: Korean/Mongolian paid translations, existing dictionary
+  API0, mixed sentences API1, retry without duplicate debit, guest translation.
+  Wallet reserved count returned to zero. Trial allowance remains 200 / USD0.25.
+- Found and fixed HTTP-v1 vs Admin SDK Android payload incompatibility (TTL and
+  channel ID). Added actual Admin SDK validation to duplicate push regression.
+  23 emulator tests passed. Failed QA dispatch records retained.
+- New iPhone lock-screen notification and Note10 background notification directly
+  observed over existing USB/ADB connections while both PC workers remained off.
+- QA audience is retained. This is a development cutover, not App Store release,
+  unlimited usage approval, or a claim that every release flow has passed.

@@ -27,6 +27,11 @@ export async function processCloudPush(db,snapshot,{vapid,allowedUids,sendNative
         const sub=JSON.parse(device.data().subscriptionJson),language=device.data().language;
         if(sub.transport==='fcm'){
           const {message}=nativeMessage(sub,{language,conversationId:room.id});
+          // The shared builder emits FCM HTTP v1 JSON; Admin SDK uses
+          // milliseconds and camelCase for these Android properties.
+          message.android.ttl=300000;
+          message.android.notification.channelId=message.android.notification.channel_id;
+          delete message.android.notification.channel_id;
           await sendNative(message);
         }else{
           const url=new URL(sub.endpoint);

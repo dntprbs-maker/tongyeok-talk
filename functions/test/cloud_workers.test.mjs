@@ -1,4 +1,7 @@
 import {test,after} from 'node:test';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {validateMessage}=require('../node_modules/firebase-admin/lib/messaging/messaging-internal.js');
 import assert from 'node:assert/strict';
 import {Firestore,Timestamp} from 'firebase-admin/firestore';
 import {guardedTranslation,cloudProvider,processCloudMessage} from '../cloud_translation.mjs';
@@ -34,7 +37,7 @@ test('cloud push duplicate event is suppressed and no source text leaks into pay
  const room=db.doc('conversations/push');await room.set({participants:['sender','recipient']});
  const ref=room.collection('messages').doc('m');await ref.set({senderId:'sender',originalText:'private original',timestamp:Timestamp.now()});
  await db.doc('users/recipient/pushDevices/device').set({enabled:true,language:'ko',subscriptionJson:JSON.stringify({transport:'fcm',token:'x'.repeat(40)})});
- const sent=[];const sendNative=async x=>sent.push(x);const snapshot=await ref.get();
+ const sent=[];const sendNative=async x=>{validateMessage(structuredClone(x));sent.push(x);};const snapshot=await ref.get();
  await Promise.all([1,2].map(()=>processCloudPush(db,snapshot,{sendNative})));
  assert.equal(sent.length,1);assert.ok(!JSON.stringify(sent).includes('private original'));
  assert.equal((await db.collection('_pushDispatch').get()).size,1);
