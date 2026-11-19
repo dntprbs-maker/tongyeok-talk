@@ -9,6 +9,8 @@ import 'push_service.dart';
 import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
 import 'translation_wallet.dart';
+import 'account_deletion_screen.dart';
+import 'session_sign_out.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool showNotifications;
@@ -120,6 +122,24 @@ class _SettingsScreenState extends State<SettingsScreen>
       }
     } catch (e) {
       if (mounted) setState(() => _error = errorKey(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await signOutSession(
+        disableNotifications: PushService.disable,
+        signOut: FirebaseAuth.instance.signOut,
+      );
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = errorKey(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -294,20 +314,24 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const Divider(height: 32),
                 const SizedBox(height: 32),
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined),
+                  title: Text(tr(context, 'deletionTitle')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:
+                      _busy
+                          ? null
+                          : () => Navigator.push<void>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AccountDeletionScreen(),
+                            ),
+                          ),
+                ),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: Text(tr(context, 'signOut')),
-                  onPressed: () async {
-                    await PushService.disable();
-                    await FirebaseAuth.instance.signOut();
-                    if (context.mounted) {
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        '/',
-                        (_) => false,
-                      );
-                    }
-                  },
+                  onPressed: _busy ? null : _signOut,
                 ),
               ],
             ),

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 import 'phone_identity.dart';
 
 class AuthService {
@@ -46,14 +47,31 @@ class AuthService {
   }
 
   Future<void> signInWithGoogle(String language, String fallbackName) async {
+    if (kIsWeb) {
+      final credential = await _auth.signInWithPopup(GoogleAuthProvider());
+      await _prepareSocialProfile(credential, language, fallbackName);
+      return;
+    }
+    final credential = await _auth.signInWithCredential(
+      await _googleCredential(),
+    );
+    await _prepareSocialProfile(credential, language, fallbackName);
+  }
+
+  Future<AuthCredential> _googleCredential() async {
     await _googleReady;
     final account = await GoogleSignIn.instance.authenticate();
     final token = account.authentication.idToken;
     if (token == null) throw StateError('missingGoogleToken');
-    final credential = await _auth.signInWithCredential(
-      GoogleAuthProvider.credential(idToken: token),
-    );
-    await _prepareSocialProfile(credential, language, fallbackName);
+    return GoogleAuthProvider.credential(idToken: token);
+  }
+
+  Future<void> reauthenticateGoogle(User user) async {
+    if (kIsWeb) {
+      await user.reauthenticateWithPopup(GoogleAuthProvider());
+    } else {
+      await user.reauthenticateWithCredential(await _googleCredential());
+    }
   }
 
   Future<void> signInWithApple(String language, String fallbackName) async {
