@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,13 +20,18 @@ class NativePushBridgeDevice {
       _initialization ??= () async {
         if (Firebase.apps.isEmpty) {
           await Firebase.initializeApp(options: DefaultFirebaseOptions.ios);
-          await FirebaseMessaging.instance
-              .setForegroundNotificationPresentationOptions(
-                alert: true,
-                badge: true,
-                sound: true,
-              );
         }
+        // The implicit Flutter engine may register plugins after the iOS
+        // launch notification used by older messaging plugins has passed.
+        await const MethodChannel(
+          'tongyeok/pushRegistration',
+        ).invokeMethod<void>('register');
+        await FirebaseMessaging.instance
+            .setForegroundNotificationPresentationOptions(
+              alert: true,
+              badge: true,
+              sound: true,
+            );
       }();
 
   Future<String> run(String action, String uid) async {

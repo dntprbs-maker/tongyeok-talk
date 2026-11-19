@@ -133,6 +133,34 @@ jobs:
             }
           }
           """
+          if os.environ["NATIVE_PUSH"] == "true":
+              swift = swift.replace("import MessageUI\n", "import MessageUI\nimport FirebaseMessaging\n")
+              swift = swift.replace(registration, registration + """
+                  let pushRegistration = FlutterMethodChannel(
+                    name: "tongyeok/pushRegistration",
+                    binaryMessenger: engineBridge.applicationRegistrar.messenger()
+                  )
+                  pushRegistration.setMethodCallHandler { call, result in
+                    guard call.method == "register" else {
+                      result(FlutterMethodNotImplemented)
+                      return
+                    }
+                    UIApplication.shared.registerForRemoteNotifications()
+                    result(nil)
+                  }
+              """)
+              marker = "  func didInitializeImplicitFlutterEngine("
+              assert swift.count(marker) == 1
+              swift = swift.replace(marker, """
+                override func application(
+                  _ application: UIApplication,
+                  didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+                ) {
+                  Messaging.messaging().apnsToken = deviceToken
+                  super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+                }
+
+              """ + marker)
           delegate.write_text(swift)
           PY
           flutter pub get
