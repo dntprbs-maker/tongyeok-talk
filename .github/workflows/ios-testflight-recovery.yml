@@ -4,6 +4,12 @@ on:
     branches: [codex/ios-web-testflight-20261118]
     paths: [.github/workflows/ios-testflight-recovery.yml]
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: Existing uploaded build to activate for existing internal testers
+        required: true
+        default: "1020"
+        type: string
 permissions:
   contents: read
 jobs:
@@ -11,11 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      TARGET_BUILD: ${{ inputs.build_number || '1013' }}
       ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
       ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
     steps:
-      - name: Activate web build 1013 for existing internal testers
+      - name: Activate selected uploaded build for existing internal testers
         run: |
           node --input-type=module <<'JS'
           import { sign } from 'node:crypto';
@@ -68,7 +75,8 @@ jobs:
             }
             return eligible;
           }
-          const target = await findBuild('1013');
+          if (!/^\d{4,6}$/.test(process.env.TARGET_BUILD ?? '')) throw Error('Invalid target build');
+          const target = await findBuild(process.env.TARGET_BUILD);
           const targetPath = '/v1/builds/' + target.id;
           const allGroups = await apple('/v1/betaGroups', {
             query: { 'filter[app]': app.id, limit: '200' },
@@ -98,14 +106,14 @@ jobs:
           for (let attempt = 0; attempt < 12; attempt++) {
             const [detail] = await apple('/v1/buildBetaDetails', { query: { 'filter[build]': target.id } });
             const state = detail?.attributes.internalBuildState;
-            console.log('Build 1013 internal state:', state);
+            console.log('Build', process.env.TARGET_BUILD, 'internal state:', state);
             if (state === 'IN_BETA_TESTING') {
               const confirmed = await groupsFor(target);
               if (!confirmed.length) throw Error('No internal group with testers was verified');
-              console.log('Build 1013 is active in TestFlight with an existing internal tester group');
+              console.log('Build', process.env.TARGET_BUILD, 'is active in TestFlight with an existing internal tester group');
               process.exit(0);
             }
             await delay(10000);
           }
-          throw Error('Build 1013 has not become installable');
+          throw Error('Build ' + process.env.TARGET_BUILD + ' has not become installable');
           JS
