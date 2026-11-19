@@ -19,6 +19,7 @@ import 'native_reward_bridge_script.dart';
 
 void main() => runApp(
   const MaterialApp(
+    debugShowCheckedModeBanner: false,
     supportedLocales: [Locale('ko'), Locale('mn'), Locale('en')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     home: TongyeokWebShell(),

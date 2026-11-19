@@ -137,8 +137,8 @@ jobs:
           retention-days: 1
   store-screens:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_store }}
-    runs-on: macos-26-intel
-    timeout-minutes: 35
+    runs-on: macos-26
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install tested Flutter
@@ -161,8 +161,14 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName 통역톡' ios/Runner/Info.plist
           /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-7142914884555224~3669140398' ios/Runner/Info.plist
           flutter build ios --simulator --debug --no-codesign -t lib/main_web_shell.dart
+          ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app "$RUNNER_TEMP/store-simulator-app.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-simulator-app
+          path: ${{ runner.temp }}/store-simulator-app.zip
+          retention-days: 1
       - name: Capture required device classes with no login or private data
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/store-screens"
