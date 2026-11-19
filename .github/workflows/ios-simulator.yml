@@ -3,6 +3,10 @@ name: iOS simulator build
 on:
   workflow_dispatch:
     inputs:
+      capture_store:
+        description: Capture the real welcome screen on required iPhone and iPad simulators
+        type: boolean
+        default: false
       audit_apple:
         description: Read existing Apple push capabilities only
         type: boolean
@@ -15,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ !inputs.audit_apple }}
+    if: ${{ !inputs.audit_apple && !inputs.capture_store }}
     runs-on: macos-latest
     timeout-minutes: 35
     steps:
@@ -131,3 +135,65 @@ jobs:
           name: apple-push-readiness
           path: ${{ runner.temp }}/apple-push-readiness.json
           retention-days: 1
+  store-screens:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_store }}
+    runs-on: macos-26-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tested Flutter
+        run: |
+          git init "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" remote add origin https://github.com/flutter/flutter.git
+          git -C "$RUNNER_TEMP/flutter" fetch --depth 1 origin tag 3.47.8
+          git -C "$RUNNER_TEMP/flutter" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/flutter" rev-parse HEAD)" = 737ba8f885dc774b53b442759999a312c9461e4e
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Build the actual web shell for simulator capture
+        run: |
+          set -euo pipefail
+          flutter create --platforms=ios --org com --project-name tongyeoktalk "$RUNNER_TEMP/store-app"
+          cp lib/main_web_shell.dart lib/mobile_web_navigation.dart lib/ios_reward_ad_probe.dart "$RUNNER_TEMP/store-app/lib/"
+          cp lib/native_push_bridge_*.dart lib/native_reward_bridge_*.dart lib/firebase_options.dart "$RUNNER_TEMP/store-app/lib/"
+          cd "$RUNNER_TEMP/store-app"
+          python3 -c 'from pathlib import Path; p=Path("pubspec.yaml"); p.write_text(p.read_text().replace("  flutter:\n    sdk: flutter\n", "  flutter:\n    sdk: flutter\n  flutter_localizations:\n    sdk: flutter\n", 1))'
+          flutter pub add webview_flutter:4.14.1 google_mobile_ads:9.2.0 firebase_core:3.15.2 firebase_messaging:15.2.10 shared_preferences:2.5.3
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName 통역톡' ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c 'Add :GADApplicationIdentifier string ca-app-pub-7142914884555224~3669140398' ios/Runner/Info.plist
+          flutter build ios --simulator --debug --no-codesign -t lib/main_web_shell.dart
+      - name: Capture required device classes with no login or private data
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/store-screens"
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/store-screens/devices.json"
+          python3 - <<'PY' > "$RUNNER_TEMP/store-devices.txt"
+          import json,os
+          devices=[d for group in json.load(open(os.environ['RUNNER_TEMP']+'/store-screens/devices.json'))['devices'].values() for d in group]
+          phone=next((d for name in ['iPhone 17 Pro','iPhone 16 Pro','iPhone 17','iPhone 16'] for d in devices if d['name']==name),None)
+          tablet=next((d for d in devices if 'iPad Pro' in d['name'] and '13' in d['name']),None)
+          assert phone and tablet, 'Required screenshot device unavailable'
+          print('iphone '+phone['udid']); print('ipad '+tablet['udid'])
+          PY
+          APP="$RUNNER_TEMP/store-app/build/ios/iphonesimulator/Runner.app"
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          while read -r LABEL DEVICE; do
+            echo "TT_CAPTURE_STAGE=$LABEL:boot"
+            xcrun simctl boot "$DEVICE"
+            xcrun simctl bootstatus "$DEVICE" -b
+            xcrun simctl status_bar "$DEVICE" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+            echo "TT_CAPTURE_STAGE=$LABEL:install"
+            xcrun simctl install "$DEVICE" "$APP"
+            echo "TT_CAPTURE_STAGE=$LABEL:launch"
+            xcrun simctl launch "$DEVICE" "$BUNDLE"
+            sleep 45
+            xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/store-screens/$LABEL-welcome.png"
+            xcrun simctl shutdown "$DEVICE"
+          done < "$RUNNER_TEMP/store-devices.txt"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: tongyeok-store-screens
+          path: ${{ runner.temp }}/store-screens
+          if-no-files-found: warn
+          retention-days: 3
