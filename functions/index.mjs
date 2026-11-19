@@ -46,4 +46,4 @@ export const rewardApi=onRequest({region:'asia-northeast3',minInstances:0,maxIns
 });
 
 
-export {memberTranslation,memberTranslationRetry,memberCreditRequest,guestTranslation,messagePush} from './cloud_entry.mjs';
+export {memberTranslation,memberTranslationRetry,memberCreditRequest,guestTranslation,messagePush,userRewardEnrollment} from './cloud_entry.mjs';

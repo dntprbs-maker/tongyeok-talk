@@ -3,6 +3,7 @@ import {defineSecret} from 'firebase-functions/params';
 import {onDocumentCreated} from 'firebase-functions/v2/firestore';
 import {processCloudMessage,processCloudGuest,guardedTranslation} from './cloud_translation.mjs';
 import {processCloudPush} from './cloud_push.mjs';
+import {enrollRewardUser} from './reward_enrollment.mjs';
 const PROJECT='tongyeok-talk-lab-20261024';
 const key=defineSecret('TONGYEOK_OPENAI_TRANSLATION_KEY');
 const vapid=defineSecret('TONGYEOK_VAPID');
@@ -31,4 +32,7 @@ export const messagePush=onDocumentCreated({...runtime,secrets:[vapid],document:
   const allowedUids=control?.pushMode==='all'?undefined:control?.pushTestUids;
   if(control?.pushMode!=='all'&&(!Array.isArray(allowedUids)||!allowedUids.length))return;
   return processCloudPush(db,e.data,{vapid:JSON.parse(vapid.value()),allowedUids});
+});
+export const userRewardEnrollment=onDocumentCreated({...runtime,document:'users/{uid}/private/contact'},async e=>{
+  if(await ready(e))return enrollRewardUser(getFirestore(),e.data);
 });

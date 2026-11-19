@@ -9,6 +9,7 @@ import {processCloudPush} from '../cloud_push.mjs';
 import {dictionaryKey} from '../worker_common/translation_dictionary.mjs';
 import {openaiTranslationModel} from '../openai_translation.mjs';
 import {koreaDay} from '../cloud_limits.mjs';
+import {enrollRewardUser} from '../reward_enrollment.mjs';
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('emulator_required');
 const db=new Firestore({projectId:'demo-cloud-workers-'+Date.now()});
 after(()=>db.terminate());
@@ -59,4 +60,18 @@ test('cloud push duplicate event is suppressed and no source text leaks into pay
  await Promise.all([1,2].map(()=>processCloudPush(db,snapshot,{sendNative})));
  assert.equal(sent.length,1);assert.ok(!JSON.stringify(sent).includes('private original'));
  assert.equal((await db.collection('_pushDispatch').get()).size,1);
+});
+
+test('normal registration enrolls in ads only after release approval without granting credit',async()=>{
+ const control=db.doc('_workerControl/cloud'),profile=db.doc('users/new-registration');
+ const contact=profile.collection('private').doc('contact');
+ await profile.set({displayName:'QA',preferredLanguage:'Korean'});
+ await contact.set({phoneE164:'+821000009003',phoneVerified:false});
+ assert.equal(await enrollRewardUser(db,await contact.get()),false);
+ await control.set({newUserRewardsEnabled:true});
+ assert.equal(await enrollRewardUser(db,await contact.get()),true);
+ assert.equal(await enrollRewardUser(db,await contact.get()),false);
+ assert.equal((await profile.get()).data().rewardAdEnabled,true);
+ assert.equal((await db.doc('translationWallets/new-registration').get()).exists,false);
+ await control.delete();
 });
