@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.cloud-test.rules"},"emulators":{"firestore":{"host":"127.0.0.1","port":8766},"ui":{"enabled":false},"singleProjectMode":false}}
