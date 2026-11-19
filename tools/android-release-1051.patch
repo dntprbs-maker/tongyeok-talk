@@ -1,0 +1,172 @@
+--- a/lib/app_language.dart
++++ b/lib/app_language.dart
+@@ -190,8 +190,8 @@
+   ],
+   'retryTranslation': ['번역 다시 시도', 'Дахин орчуулах'],
+   'translationRequested': [
+-    '번역을 다시 요청했어요. PC 발송기가 켜져 있어야 처리돼요.',
+-    'Дахин орчуулах хүсэлт илгээлээ. Компьютерийн үйлчилгээ ажиллаж байх ёстой.',
++    '번역을 다시 요청했어요. 잠시 기다려 주세요.',
++    'Дахин орчуулах хүсэлт илгээлээ. Түр хүлээнэ үү.',
+   ],
+   'sending': ['보내는 중', 'Илгээж байна'],
+   'sent': ['전송됨', 'Илгээсэн'],
+@@ -203,8 +203,8 @@
+   'app': ['통역톡', 'Орчуулагч Ток'],
+   'language': ['사용 언어', 'Хэл сонгох'],
+   'preview': [
+-    '루나 자동번역 시험판 · 번역의 정확성을 확인해 주세요.',
+-    'Luna автомат орчуулгын туршилт · Орчуулгыг шалгана уу.',
++    '자동번역 · 중요한 내용은 원문과 함께 확인해 주세요.',
++    'Автомат орчуулга · Чухал мэдээллийг эх бичвэртэй нь тулган шалгана уу.',
+   ],
+   'welcome': ['이야기를 이어주는 통역톡', 'Харилцааг холбох Орчуулагч Ток'],
+   'intro': [
+@@ -291,8 +291,8 @@
+     'Мэдэгдлийн тохиргоог хадгалж чадсангүй. Дахин оролдоно уу.',
+   ],
+   'pushTrial': [
+-    '시험 알림은 개발 PC가 켜져 있고 알림 발송기가 실행 중일 때만 도착해요. 문자메시지가 아니며, 잠금화면에는 메시지 내용을 표시하지 않아요.',
+-    'Туршилтын мэдэгдэл хөгжүүлэлтийн компьютер болон илгээгч ажиллаж байх үед ирнэ. SMS биш. Түгжээтэй дэлгэцэд зурвасын агуулгыг харуулахгүй.',
++    '인터넷에 연결되어 있으면 통역톡을 닫아도 새 메시지 알림을 받을 수 있어요. 문자메시지가 아니며, 잠금화면에는 메시지 내용을 표시하지 않아요.',
++    'Интернэтэд холбогдсон үед Тонгёктокийг хаасан ч шинэ зурвасын мэдэгдэл ирнэ. SMS биш. Түгжээтэй дэлгэцэд зурвасын агуулгыг харуулахгүй.',
+   ],
+   'homeGreeting': ['오늘도 편하게 이야기해요', 'Өнөөдөр ч тухтай ярилцъя'],
+   'helloName': ['{name}님, 반가워요', '{name}, тавтай морил'],
+--- a/lib/reward_ads_section.dart
++++ b/lib/reward_ads_section.dart
+@@ -3,6 +3,7 @@
+ import 'package:flutter/material.dart';
+ import 'app_language.dart';
+ import 'reward_ad_service.dart';
++import 'pass_deadline.dart';
+ 
+ class RewardAdsSection extends StatefulWidget {
+   const RewardAdsSection({super.key});
+@@ -142,7 +143,6 @@
+   @override
+   Widget build(BuildContext context) {
+     final leader = role == 'leader';
+-    final until = passUntil?.toUtc().add(const Duration(hours: 9));
+     return Container(
+       margin: const EdgeInsets.only(top: 16),
+       padding: const EdgeInsets.all(16),
+@@ -161,14 +161,11 @@
+           Text(tr(context, leader ? 'adLeaderOffer' : 'adMemberOffer')),
+           const SizedBox(height: 8),
+           Text(
+-            leader && until == null
++            leader && passUntil == null
+                 ? tr(context, 'adNoPass')
+                 : leader
+                 ? tr(context, 'adPassUntil', {
+-                  'time':
+-                      until == null
+-                          ? tr(context, 'adNoPass')
+-                          : '${until.month}/${until.day} 00:00',
++                  'time': passDeadlineText(passUntil!),
+                 })
+                 : '${tr(context, 'translationCredits')}: $availableCredits',
+           ),
+--- a/lib/translation_wallet.dart
++++ b/lib/translation_wallet.dart
+@@ -3,6 +3,7 @@
+ import 'package:cloud_firestore/cloud_firestore.dart';
+ import 'app_language.dart';
+ import 'credit_warning.dart';
++import 'pass_deadline.dart';
+ 
+ class TranslationWallet extends StatefulWidget {
+   final bool compact;
+@@ -42,14 +43,12 @@
+             if (profile.data?.data()?['rewardAdEnabled'] == true) {
+               if (AppLanguage.instance.code == 'ko') {
+                 final until = (data['leaderPassUntil'] as Timestamp?)
+-                    ?.toDate()
+-                    .toUtc()
+-                    .add(const Duration(hours: 9));
++                    ?.toDate();
+                 summary =
+                     until == null
+                         ? tr(context, 'adNoPass')
+                         : tr(context, 'adPassUntil', {
+-                          'time': '${until.month}/${until.day} 00:00',
++                          'time': passDeadlineText(until),
+                         });
+               } else {
+                 summary = '${tr(context, 'translationCredits')}: $available';
+--- /dev/null
++++ b/lib/pass_deadline.dart
+@@ -0,0 +1,12 @@
++/// Server expiration is exclusive; display the last usable minute in Korea.
++DateTime? lastPassMinute(DateTime? expiration) => expiration
++    ?.toUtc()
++    .subtract(const Duration(milliseconds: 1))
++    .add(const Duration(hours: 9));
++
++String passDeadlineText(DateTime expiration) {
++  final lastMinute = lastPassMinute(expiration)!;
++  return '${lastMinute.month}/${lastMinute.day} '
++      '${lastMinute.hour.toString().padLeft(2, '0')}:'
++      '${lastMinute.minute.toString().padLeft(2, '0')}';
++}
+--- a/test/reward_ads_test.dart
++++ b/test/reward_ads_test.dart
+@@ -12,10 +12,20 @@
+     await tester.tap(find.text('광고 보고 50문장 충전'));expect(calls,1);
+     await tester.pumpWidget(LanguageScope(child:MaterialApp(home:Scaffold(body:RewardAdsPanel(
+       role:'leader',availableCredits:0,busy:true,supported:true,testMode:true,onWatch:()=>calls++,onPrivacy:(){})))));
+-    expect(find.textContaining('24시간'),findsOneWidget);
++    expect(find.textContaining('광고 2편'),findsOneWidget);
+     expect(find.text('한국인 · 1일 이용권'),findsOneWidget);
+     expect(find.textContaining('번역권'),findsNothing);
+     await tester.tap(find.text('광고 준비 중…'));expect(calls,1);
++  });
++  testWidgets('leader pass shows the last usable Korea minute', (tester) async {
++    await tester.pumpWidget(LanguageScope(child: MaterialApp(home: Scaffold(body: RewardAdsPanel(
++      role: 'leader', availableCredits: 0,
++      passUntil: DateTime.utc(2026, 11, 21, 15),
++      busy: false, supported: true, testMode: false,
++      onWatch: () {}, onPrivacy: () {},
++    )))));
++    expect(find.textContaining('11/21 23:59'), findsOneWidget);
++    expect(find.textContaining('11/22 00:00'), findsNothing);
+   });
+   test('all ad messages have Korean and Mongolian text', () {
+     for(final e in messages.entries.where((e)=>e.key.startsWith('ad'))){expect(e.value.length,2);expect(e.value.every((text)=>text.trim().isNotEmpty),true);}
+--- /dev/null
++++ b/test/pass_deadline_test.dart
+@@ -0,0 +1,13 @@
++import 'package:bridgechat/pass_deadline.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('exclusive midnight stays on the previous Korea calendar day', () {
++    expect(passDeadlineText(DateTime.utc(2026, 11, 21, 15)), '11/21 23:59');
++    expect(passDeadlineText(DateTime.utc(2026, 12, 31, 15)), '12/31 23:59');
++  });
++  test('an actual non-midnight expiration keeps its final usable minute', () {
++    expect(passDeadlineText(DateTime.utc(2026, 11, 20, 4, 30)), '11/20 13:29');
++    expect(lastPassMinute(null), isNull);
++  });
++}
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -7,7 +7,7 @@
+     id("dev.flutter.flutter-gradle-plugin")
+ }
+ 
+-val releasePropertiesFile = rootProject.file("key.properties")
++val releasePropertiesFile = file(System.getenv("TONGYEOK_RELEASE_PROPERTIES") ?: rootProject.file("key.properties").path)
+ val releaseProperties = Properties().apply {
+     if (releasePropertiesFile.exists()) releasePropertiesFile.inputStream().use { load(it) }
+ }
+@@ -44,7 +44,7 @@
+     signingConfigs {
+         if (releasePropertiesFile.exists()) {
+             create("release") {
+-                storeFile = rootProject.file(releaseProperties.getProperty("storeFile"))
++                storeFile = releasePropertiesFile.parentFile.resolve(releaseProperties.getProperty("storeFile"))
+                 storePassword = releaseProperties.getProperty("storePassword")
+                 keyAlias = releaseProperties.getProperty("keyAlias")
+                 keyPassword = releaseProperties.getProperty("keyPassword")
