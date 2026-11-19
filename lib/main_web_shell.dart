@@ -2,6 +2,8 @@
 // Do not use as a release entry point until device and bridge tests pass.
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'package:flutter/services.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -191,7 +193,14 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     String? value, error;
     try {
       value = await _pushDevice.run(request.action, request.uid);
-    } catch (_) {
+    } catch (failure) {
+      final code =
+          failure is FirebaseException
+              ? failure.code
+              : failure is PlatformException
+              ? failure.code
+              : failure.runtimeType.toString();
+      debugPrint('TT_IOS_PUSH_FAILED code=$code');
       error = 'push_failed';
     }
     final current = await _controller.currentUrl();

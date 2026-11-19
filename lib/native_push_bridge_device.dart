@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,14 +19,18 @@ class NativePushBridgeDevice {
       _initialization ??= () async {
         if (Firebase.apps.isEmpty) {
           await Firebase.initializeApp(options: DefaultFirebaseOptions.ios);
-          await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-            alert: true, badge: true, sound: true,
-          );
+          await FirebaseMessaging.instance
+              .setForegroundNotificationPresentationOptions(
+                alert: true,
+                badge: true,
+                sound: true,
+              );
         }
       }();
 
   Future<String> run(String action, String uid) async {
     await _initialize();
+    debugPrint('TT_IOS_PUSH_INITIALIZED');
     final prefs = await SharedPreferences.getInstance();
     final messaging = FirebaseMessaging.instance;
     final owner = prefs.getString(_owner);
@@ -84,8 +89,13 @@ class NativePushBridgeDevice {
       await Future<void>.delayed(const Duration(milliseconds: 300));
       apns = await messaging.getAPNSToken();
     }
-    if (apns == null) return action == 'state' ? 'off' : 'unsupported';
+    if (apns == null) {
+      debugPrint('TT_IOS_PUSH_APNS_NOT_READY');
+      return action == 'state' ? 'off' : 'unsupported';
+    }
+    debugPrint('TT_IOS_PUSH_APNS_READY');
     final token = await messaging.getToken();
+    debugPrint('TT_IOS_PUSH_FCM_READY');
     if (token == null) return 'off';
     if (action == 'state') {
       return prefs.getString(_owner) == uid &&
