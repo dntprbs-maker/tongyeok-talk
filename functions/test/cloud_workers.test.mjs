@@ -7,6 +7,8 @@ import {Firestore,Timestamp} from 'firebase-admin/firestore';
 import {guardedTranslation,cloudProvider,processCloudMessage} from '../cloud_translation.mjs';
 import {processCloudPush} from '../cloud_push.mjs';
 import {dictionaryKey} from '../worker_common/translation_dictionary.mjs';
+import {openaiTranslationModel} from '../openai_translation.mjs';
+import {koreaDay} from '../cloud_limits.mjs';
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('emulator_required');
 const db=new Firestore({projectId:'demo-cloud-workers-'+Date.now()});
 after(()=>db.terminate());
@@ -32,6 +34,22 @@ test('cloud member combines dictionary sentences in original order without provi
  const ref=room.collection('messages').doc('m');await ref.set({originalText:'감사합니다. 조심하세요.',sourceLang:'ko',senderId:'sender',timestamp:Timestamp.now()});
  let calls=0;await processCloudMessage(db,ref,{providerCall:async()=>{calls++;throw Error('must_not_call')}});
  const result=(await ref.get()).data();assert.equal(calls,0);assert.equal(result.translationStatus,'done');assert.equal(result.translations.mn,'Баярлалаа. Болгоомжтой байгаарай.');
+});
+
+test('operator unlimited mode passes the old 200-call cap and later daily limits apply',async()=>{
+ const control=db.doc('_workerControl/cloud'),budget=db.doc('_workerBudgets/memberCloudTrial');
+ const day=db.doc('_workerBudgets/translation_'+koreaDay());
+ await budget.set({calls:240,costUsd:0.3});
+ await control.set({translationLimits:{mode:'unlimited'}});
+ const provider=cloudProvider(db,'fixture',async()=>({actualModel:openaiTranslationModel,translation:'verified',costUsd:0.001}));
+ assert.equal((await provider({})).translation,'verified');
+ assert.equal((await budget.get()).data().calls,241);
+ assert.equal((await budget.get()).data().costUsd,0.301);
+ const used=(await day.get()).data().calls;
+ await control.set({translationLimits:{mode:'daily',maxCallsPerDay:used}});
+ await assert.rejects(provider({}),/daily_budget_limit/);
+ assert.equal((await budget.get()).data().calls,241);
+ await control.delete();
 });
 test('cloud push duplicate event is suppressed and no source text leaks into payload',async()=>{
  const room=db.doc('conversations/push');await room.set({participants:['sender','recipient']});

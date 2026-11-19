@@ -6,20 +6,30 @@ import {processCreditTranslation} from './worker_common/credit_translation_proce
 import {adPair} from './worker_common/ad_translation_credits.mjs';
 import {processGroupTranslation,usesGroupSplit} from './worker_common/group_translation_credits.mjs';
 import {processGuestTranslation} from './guest_chat.mjs';
+import {translationPolicy,koreaDay} from './cloud_limits.mjs';
 
-// Same cumulative pilot allowance as the PC worker. Bootstrap from its ledger;
-// an absent budget fails closed and never silently creates a fresh allowance.
+// Preserve the migrated lifetime ledger. Operator settings can select unlimited
+// operation or a KST daily allowance without an app update or ledger reset.
 export function cloudProvider(db,apiKey,call=translateWithOpenAI) {
   return async (input,sentences) => {
     const budget=db.doc('_workerBudgets/memberCloudTrial');
+    const day=db.doc('_workerBudgets/translation_'+koreaDay());
     await db.runTransaction(async tx=>{
-      const b=(await tx.get(budget)).data();
-      if(!b||!Number.isSafeInteger(b.calls)||b.calls>=200||!(b.costUsd>=0)||b.costUsd>=0.25)throw Error('trial_budget_limit');
+      const [usage,control,daily]=await tx.getAll(budget,db.doc('_workerControl/cloud'),day);
+      const b=usage.data(),d=daily.data()??{calls:0,costUsd:0};
+      if(!b||!Number.isSafeInteger(b.calls)||b.calls<0||!(b.costUsd>=0))throw Error('trial_budget_limit');
+      const policy=translationPolicy(control.data());
+      if(policy.mode==='legacy'&&(b.calls>=200||b.costUsd>=0.25))throw Error('trial_budget_limit');
+      if(!Number.isSafeInteger(d.calls)||d.calls<0||!(d.costUsd>=0))throw Error('invalid_daily_usage');
+      if(policy.mode==='daily'&&((policy.calls!=null&&d.calls>=policy.calls)||(policy.cost!=null&&d.costUsd>=policy.cost)))throw Error('daily_budget_limit');
       tx.update(budget,{calls:b.calls+1,updatedAt:FieldValue.serverTimestamp()});
+      tx.set(day,{calls:d.calls+1,costUsd:d.costUsd,updatedAt:FieldValue.serverTimestamp()});
     });
     const result=await call({model,...input},{apiKey,sentences});
     if(result.actualModel!==model)throw Error('unexpected_response_model');
-    await budget.update({costUsd:FieldValue.increment(result.costUsd??0),updatedAt:FieldValue.serverTimestamp()});
+    const batch=db.batch();
+    for(const ref of [budget,day])batch.update(ref,{costUsd:FieldValue.increment(result.costUsd??0),updatedAt:FieldValue.serverTimestamp()});
+    await batch.commit();
     return result;
   };
 }

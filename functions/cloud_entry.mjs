@@ -27,7 +27,8 @@ export const guestTranslation=onDocumentCreated({...runtime,secrets:[key],docume
 });
 export const messagePush=onDocumentCreated({...runtime,secrets:[vapid],document:'conversations/{room}/messages/{message}'},async e=>{
   if(!await ready(e))return;
-  const db=getFirestore(),allowedUids=(await db.doc('_workerControl/cloud').get()).data()?.pushTestUids;
-  if(!Array.isArray(allowedUids)||!allowedUids.length)return;
+  const db=getFirestore(),control=(await db.doc('_workerControl/cloud').get()).data();
+  const allowedUids=control?.pushMode==='all'?undefined:control?.pushTestUids;
+  if(control?.pushMode!=='all'&&(!Array.isArray(allowedUids)||!allowedUids.length))return;
   return processCloudPush(db,e.data,{vapid:JSON.parse(vapid.value()),allowedUids});
 });
