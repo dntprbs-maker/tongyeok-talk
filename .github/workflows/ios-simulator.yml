@@ -7,6 +7,10 @@ on:
         description: Capture the real welcome screen on required iPhone and iPad simulators
         type: boolean
         default: false
+      reuse_store_app:
+        description: Reuse the verified simulator app to recapture an unobstructed iPhone screen
+        type: boolean
+        default: false
       audit_apple:
         description: Read existing Apple push capabilities only
         type: boolean
@@ -136,7 +140,7 @@ jobs:
           path: ${{ runner.temp }}/apple-push-readiness.json
           retention-days: 1
   store-screens:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_store }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_store && !inputs.reuse_store_app }}
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -201,5 +205,43 @@ jobs:
         with:
           name: tongyeok-store-screens
           path: ${{ runner.temp }}/store-screens
+          if-no-files-found: warn
+          retention-days: 3
+  store-phone-recapture:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.capture_store && inputs.reuse_store_app }}
+    runs-on: macos-26
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: store-simulator-app
+          run-id: 44601106915
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/reuse
+      - name: Capture unobstructed iPhone screen from the verified app
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          ditto -x -k "$RUNNER_TEMP/reuse/store-simulator-app.zip" "$RUNNER_TEMP/reuse"
+          mkdir -p "$RUNNER_TEMP/store-phone"
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; ds=[d for group in json.load(sys.stdin)["devices"].values() for d in group]; print(next(d["udid"] for d in ds if d["name"]=="iPhone 17 Pro"))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl status_bar "$DEVICE" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          APP="$RUNNER_TEMP/reuse/Runner.app"
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl launch "$DEVICE" "$BUNDLE"
+          sleep 180
+          xcrun simctl io "$DEVICE" screenshot "$RUNNER_TEMP/store-phone/iphone-welcome.png"
+          xcrun simctl shutdown "$DEVICE"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: store-phone-unobstructed
+          path: ${{ runner.temp }}/store-phone
           if-no-files-found: warn
           retention-days: 3
