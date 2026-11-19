@@ -18,6 +18,9 @@ class NativePushBridgeDevice {
       _initialization ??= () async {
         if (Firebase.apps.isEmpty) {
           await Firebase.initializeApp(options: DefaultFirebaseOptions.ios);
+          await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+            alert: true, badge: true, sound: true,
+          );
         }
       }();
 

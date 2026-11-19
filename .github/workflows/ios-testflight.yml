@@ -6,6 +6,10 @@ on:
         description: Enable the tested iOS rewarded-ad bridge in this internal build
         type: boolean
         default: false
+      native_push:
+        description: Enable app-specific Apple push in this internal build
+        type: boolean
+        default: false
       ads_test_mode:
         description: Use sample ads without granting credit
         type: boolean
@@ -27,6 +31,7 @@ jobs:
     timeout-minutes: 45
     env:
       APP_VARIANT: ${{ (github.event_name == 'workflow_dispatch' || github.ref_name == 'codex/ios-web-testflight-20261118') && 'web' || 'native' }}
+      NATIVE_PUSH: ${{ inputs.native_push == true && 'true' || 'false' }}
       NATIVE_REWARDS: ${{ inputs.native_rewards == true && 'true' || 'false' }}
       ADS_TEST_MODE: ${{ inputs.ads_test_mode == false && github.event_name == 'workflow_dispatch' && 'false' || 'true' }}
     steps:
@@ -65,6 +70,8 @@ jobs:
           info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
           info["UIRequiresFullScreen"] = True
           info["FlutterDeepLinkingEnabled"] = False
+          if os.environ.get("NATIVE_PUSH") == "true":
+              info["UIBackgroundModes"] = ["remote-notification"]
           info["ITSAppUsesNonExemptEncryption"] = False
           info.setdefault("CFBundleURLTypes", []).append({
               "CFBundleTypeRole": "Editor",
@@ -79,7 +86,10 @@ jobs:
           with path.open("wb") as file:
               plistlib.dump(info, file)
           with Path("ios/Runner/Runner.entitlements").open("wb") as file:
-              plistlib.dump({"com.apple.developer.applesignin": ["Default"]}, file)
+              entitlements = {"com.apple.developer.applesignin": ["Default"]}
+              if os.environ.get("NATIVE_PUSH") == "true":
+                  entitlements["aps-environment"] = "production"
+              plistlib.dump(entitlements, file)
           delegate = Path("ios/Runner/AppDelegate.swift")
           swift = delegate.read_text()
           registration = "    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)"
@@ -141,6 +151,9 @@ jobs:
           P12: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
           PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
           set -euo pipefail
           test -n "$P12" && test -n "$P12_PASSWORD" && test -n "$PROFILE"
@@ -156,6 +169,14 @@ jobs:
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
           printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
           security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+          if [[ "$NATIVE_PUSH" == true ]]; then
+            export IOS_EXISTING_PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+            export IOS_PUSH_PROFILE_OUTPUT="$RUNNER_TEMP/profile.mobileprovision"
+            node --test tools/prepare_ios_push_profile.test.mjs
+            node tools/prepare_ios_push_profile.mjs
+            security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+            /usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist" | grep -Fx production
+          fi
           /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "$RUNNER_TEMP/profile.plist" | grep -Fx Default
           UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
           cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
@@ -168,7 +189,7 @@ jobs:
           if [[ "$APP_VARIANT" == web ]]; then
             target=lib/main_web_shell.dart
           fi
-          flutter build ios --release --no-codesign --target "$target" --build-number "$((1000 + GITHUB_RUN_NUMBER))" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE"
+          flutter build ios --release --no-codesign --target "$target" --build-number "$((1000 + GITHUB_RUN_NUMBER))" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
           export PROFILE_NAME
           python3 - <<'PY'
