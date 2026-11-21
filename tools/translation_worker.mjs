@@ -5,6 +5,7 @@ import {FieldValue,Timestamp} from '@google-cloud/firestore';
 import {operatorFirestore} from './operator_firestore.mjs';
 import {config,translate} from './translation_provider.mjs';
 import {compareTimestamps} from './push_helpers.mjs';
+import {processGroupTranslation,usesGroupSplit} from './group_translation_credits.mjs';
 const apiKey=readFileSync(process.env.TONGYEOK_OPENROUTER_KEY_FILE,'utf8').trim();
 if(!apiKey.startsWith('sk-or-v1-'))throw new Error('invalid_private_key_file');
 const db=await operatorFirestore(),since=Timestamp.now(),watching=new Map(),pending=new Set();
@@ -23,6 +24,19 @@ async function processMessage(ref,retry){
   const data=doc.data();
   if(data.translationStatus==='done'||(!retry&&(!data.timestamp||compareTimestamps(data.timestamp,since)<0)))return;
   if(!['ko','mn'].includes(data.sourceLang)||typeof data.originalText!=='string'||!data.originalText.trim()||[...data.originalText].length>2000)return;
+  const roomDoc=await ref.parent.parent.get();
+  if(usesGroupSplit(roomDoc)){
+    await processGroupTranslation(db,ref,roomDoc,async input=>{
+      if(budget.calls>=200||budget.costUsd>=0.25)throw Error('trial_budget_limit');
+      budget.calls++;writeFileSync(ledgerFile,JSON.stringify(budget));
+      const result=await translate({model:config.selectedModel,text:input.text,source:input.source,target:input.target},{apiKey});
+      budget.costUsd+=result.costUsd??0;writeFileSync(ledgerFile,JSON.stringify(budget));
+      health();
+      if(result.actualModel!==config.selectedModel)throw Error('unexpected_response_model');
+      return result;
+    });
+    return;
+  }
   const attempt=(data.translationAttempts||0)+1;
   if(attempt>3)return;
   if(budget.calls>=200||budget.costUsd>=0.25){await ref.update({translationStatus:'failed',translationError:'trial_budget_limit'});return;}
