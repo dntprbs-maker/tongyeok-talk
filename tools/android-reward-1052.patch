@@ -1,0 +1,86 @@
+--- a/lib/reward_ad_service.dart
++++ b/lib/reward_ad_service.dart
+@@ -2,13 +2,15 @@
+ import 'dart:convert';
+ import 'package:firebase_auth/firebase_auth.dart';
+ import 'package:flutter/foundation.dart';
++import 'package:flutter/services.dart';
+ import 'package:google_mobile_ads/google_mobile_ads.dart';
+ import 'package:http/http.dart' as http;
+ 
+ const rewardAdsTestMode = bool.fromEnvironment(
+   'TONGYEOK_ADS_TEST_MODE',
+-  defaultValue: true,
++  defaultValue: kDebugMode,
+ );
++const _debugAdDevice = String.fromEnvironment('TONGYEOK_AD_TEST_DEVICE');
+ const _localBackend = String.fromEnvironment('TONGYEOK_REWARD_BACKEND');
+ const _liveBackend =
+     'https://asia-northeast3-tongyeok-talk-lab-20261024.cloudfunctions.net/rewardApi';
+@@ -66,6 +68,15 @@
+     }
+     _initialization ??= MobileAds.instance.initialize().then((_) {});
+     await _initialization;
++    if (kDebugMode && !rewardAdsTestMode) {
++      if (_debugAdDevice.isEmpty) throw StateError('adUnavailable');
++      await MobileAds.instance.updateRequestConfiguration(
++        RequestConfiguration(testDeviceIds: [_debugAdDevice]),
++      );
++      final verified = await const MethodChannel('tongyeok/ad_test_device')
++          .invokeMethod<bool>('isTestDevice');
++      if (verified != true) throw StateError('adUnavailable');
++    }
+   }
+ 
+   static Future<RewardSession> _session(User user) async {
+@@ -84,6 +95,9 @@
+       final data = jsonDecode(response.body) as Map<String, dynamic>;
+       if (response.statusCode != 200) {
+         final code = data['error'];
++        if (kDebugMode) {
++          debugPrint('Reward session rejected: ${response.statusCode} $code');
++        }
+         throw StateError(
+           code == 'reward_rate_limited' || code == 'reward_daily_limit'
+               ? 'adRateLimited'
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -68,3 +68,7 @@
+ flutter {
+     source = "../.."
+ }
++
++dependencies {
++    implementation("com.google.android.gms:play-services-ads:25.5.0")
++}
+--- a/android/app/src/main/kotlin/com/tongyeoktalk/MainActivity.kt
++++ b/android/app/src/main/kotlin/com/tongyeoktalk/MainActivity.kt
+@@ -2,11 +2,28 @@
+ 
+ import android.app.NotificationChannel
+ import android.app.NotificationManager
++import android.content.pm.ApplicationInfo
+ import android.os.Build
+ import android.os.Bundle
+ import io.flutter.embedding.android.FlutterActivity
++import io.flutter.embedding.engine.FlutterEngine
++import io.flutter.plugin.common.MethodChannel
++import com.google.android.gms.ads.AdRequest
+ 
+ class MainActivity : FlutterActivity() {
++    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
++        super.configureFlutterEngine(flutterEngine)
++        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
++        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/ad_test_device")
++            .setMethodCallHandler { call, result ->
++                if (call.method == "isTestDevice") {
++                    result.success(AdRequest.Builder().build().isTestDevice(this))
++                } else {
++                    result.notImplemented()
++                }
++            }
++    }
++
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
