@@ -1,9 +1,14 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+
 import 'native_reward_bridge_protocol.dart';
 
 class NativeRewardBridgeDevice {
+  static const _diagnostics = bool.fromEnvironment(
+    'TONGYEOK_IOS_AD_DIAGNOSTICS',
+  );
   bool _ready = false;
   final Set<String> _used = {};
   Future<void>? _initialization;
@@ -79,7 +84,12 @@ class NativeRewardBridgeDevice {
             }
           },
           onAdFailedToLoad: (error) {
-            debugPrint('TT_IOS_AD_LOAD_FAILED code=${error.code}');
+            debugPrint(
+              'TT_IOS_AD_LOAD_FAILED domain=${error.domain} code=${error.code}',
+            );
+            if (_diagnostics) {
+              debugPrint('TT_IOS_AD_LOAD_MESSAGE ${error.message}');
+            }
             if (!loaded.isCompleted) {
               loaded.completeError(StateError('adLoadFailed'));
             }
@@ -108,6 +118,9 @@ class NativeRewardBridgeDevice {
           if (!dismissed.isCompleted) dismissed.complete(earned);
         },
         onAdFailedToShowFullScreenContent: (_, error) {
+          debugPrint(
+            'TT_IOS_AD_SHOW_FAILED domain=${error.domain} code=${error.code}',
+          );
           if (!dismissed.isCompleted) {
             dismissed.completeError(StateError('adLoadFailed'));
           }

@@ -1,13 +1,18 @@
 // Isolated prototype. Advertising and notifications are not yet wired.
 // Do not use as a release entry point until device and bridge tests pass.
 import 'package:flutter/material.dart';
+
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
 import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
 import 'native_push_bridge_device.dart';
@@ -33,6 +38,7 @@ class TongyeokWebShell extends StatefulWidget {
 }
 
 class _TongyeokWebShellState extends State<TongyeokWebShell> {
+  static const _buildNumber = String.fromEnvironment('TONGYEOK_BUILD_NUMBER');
   // Keep disabled until the Apple push profile/key and device tests are ready.
   static const _nativePushEnabled = bool.fromEnvironment(
     'TONGYEOK_IOS_NATIVE_PUSH',
@@ -57,88 +63,87 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   @override
   void initState() {
     super.initState();
-    _controller =
-        WebViewController()
-          ..setJavaScriptMode(JavaScriptMode.unrestricted)
-          ..addJavaScriptChannel(
-            'TongyeokNativeReward',
-            onMessageReceived: (message) {
-              if (!_nativeRewardEnabled ||
-                  kIsWeb ||
-                  defaultTargetPlatform != TargetPlatform.iOS) {
-                return;
-              }
-              _handleReward(message.message, _pageNonce);
-            },
-          )
-          ..addJavaScriptChannel(
-            'TongyeokNativePush',
-            onMessageReceived: (message) {
-              if (!_nativePushEnabled ||
-                  kIsWeb ||
-                  defaultTargetPlatform != TargetPlatform.iOS ||
-                  _queuedPushRequests >= 4) {
-                return;
-              }
-              final nonce = _pageNonce;
-              _queuedPushRequests++;
-              _pushQueue = _pushQueue
-                  .then((_) => _handlePush(message.message, nonce))
-                  .catchError((Object _) {})
-                  .whenComplete(() => _queuedPushRequests--);
-            },
-          )
-          ..setNavigationDelegate(
-            NavigationDelegate(
-              onNavigationRequest: (request) {
-                final uri = Uri.tryParse(request.url);
-                return uri != null && isTrustedTongyeokPage(uri)
-                    ? NavigationDecision.navigate
-                    : NavigationDecision.prevent;
-              },
-              onPageStarted: (_) {
-                _pageNonce = base64UrlEncode(
-                  List.generate(32, (_) => Random.secure().nextInt(256)),
-                );
-                if (mounted) {
-                  setState(() {
-                    _loading = true;
-                    _failed = false;
-                  });
-                }
-              },
-              onPageFinished: (url) async {
-                if (_nativeRewardEnabled &&
-                    !kIsWeb &&
-                    defaultTargetPlatform == TargetPlatform.iOS &&
-                    isTrustedTongyeokPage(Uri.parse(url))) {
-                  await _controller.runJavaScript(
-                    nativeRewardBridgeScript(
-                      _pageNonce,
-                      testMode: _nativeRewardTestMode,
-                    ),
-                  );
-                }
-                if (_nativePushEnabled &&
-                    !kIsWeb &&
-                    defaultTargetPlatform == TargetPlatform.iOS &&
-                    isTrustedTongyeokPage(Uri.parse(url))) {
-                  await _controller.runJavaScript(
-                    nativePushBridgeScript(_pageNonce),
-                  );
-                }
-                if (mounted) setState(() => _loading = false);
-              },
-              onWebResourceError: (error) {
-                if (mounted && error.isForMainFrame == true) {
-                  setState(() {
-                    _failed = true;
-                    _loading = false;
-                  });
-                }
-              },
-            ),
-          );
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel(
+        'TongyeokNativeReward',
+        onMessageReceived: (message) {
+          if (!_nativeRewardEnabled ||
+              kIsWeb ||
+              defaultTargetPlatform != TargetPlatform.iOS) {
+            return;
+          }
+          _handleReward(message.message, _pageNonce);
+        },
+      )
+      ..addJavaScriptChannel(
+        'TongyeokNativePush',
+        onMessageReceived: (message) {
+          if (!_nativePushEnabled ||
+              kIsWeb ||
+              defaultTargetPlatform != TargetPlatform.iOS ||
+              _queuedPushRequests >= 4) {
+            return;
+          }
+          final nonce = _pageNonce;
+          _queuedPushRequests++;
+          _pushQueue = _pushQueue
+              .then((_) => _handlePush(message.message, nonce))
+              .catchError((Object _) {})
+              .whenComplete(() => _queuedPushRequests--);
+        },
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            return uri != null && isTrustedTongyeokPage(uri)
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
+          onPageStarted: (_) {
+            _pageNonce = base64UrlEncode(
+              List.generate(32, (_) => Random.secure().nextInt(256)),
+            );
+            if (mounted) {
+              setState(() {
+                _loading = true;
+                _failed = false;
+              });
+            }
+          },
+          onPageFinished: (url) async {
+            if (_nativeRewardEnabled &&
+                !kIsWeb &&
+                defaultTargetPlatform == TargetPlatform.iOS &&
+                isTrustedTongyeokPage(Uri.parse(url))) {
+              await _controller.runJavaScript(
+                nativeRewardBridgeScript(
+                  _pageNonce,
+                  testMode: _nativeRewardTestMode,
+                ),
+              );
+            }
+            if (_nativePushEnabled &&
+                !kIsWeb &&
+                defaultTargetPlatform == TargetPlatform.iOS &&
+                isTrustedTongyeokPage(Uri.parse(url))) {
+              await _controller.runJavaScript(
+                nativePushBridgeScript(_pageNonce),
+              );
+            }
+            if (mounted) setState(() => _loading = false);
+          },
+          onWebResourceError: (error) {
+            if (mounted && error.isForMainFrame == true) {
+              setState(() {
+                _failed = true;
+                _loading = false;
+              });
+            }
+          },
+        ),
+      );
     _openPublishedApp();
   }
 
@@ -195,12 +200,11 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     try {
       value = await _pushDevice.run(request.action, request.uid);
     } catch (failure) {
-      final code =
-          failure is FirebaseException
-              ? failure.code
-              : failure is PlatformException
-              ? failure.code
-              : failure.runtimeType.toString();
+      final code = failure is FirebaseException
+          ? failure.code
+          : failure is PlatformException
+          ? failure.code
+          : failure.runtimeType.toString();
       debugPrint('TT_IOS_PUSH_FAILED code=$code');
       error = 'push_failed';
     }
@@ -243,37 +247,60 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     final mongolian = Localizations.localeOf(context).languageCode == 'mn';
     return Scaffold(
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            WebViewWidget(controller: _controller),
-            if (_loading) const Center(child: CircularProgressIndicator()),
-            if (_failed)
-              ColoredBox(
-                color: Theme.of(context).scaffoldBackgroundColor,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        mongolian
-                            ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.'
-                            : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.',
-                      ),
-                      TextButton(
-                        onPressed: _openPublishedApp,
-                        child: Text(mongolian ? 'Дахин оролдох' : '다시 시도'),
-                      ),
-                    ],
+            if (_buildNumber.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 4,
+                  horizontal: 16,
+                ),
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: Text(
+                    mongolian ? 'Хувилбар $_buildNumber' : '빌드 $_buildNumber',
+                    style: Theme.of(context).textTheme.labelSmall,
                   ),
                 ),
               ),
-            if (iosAdProbeEnabled &&
-                !kIsWeb &&
-                defaultTargetPlatform == TargetPlatform.iOS)
-              const Align(
-                alignment: Alignment.bottomCenter,
-                child: IosRewardAdProbe(),
+            Expanded(
+              child: Stack(
+                children: [
+                  WebViewWidget(controller: _controller),
+                  if (_loading)
+                    const Center(child: CircularProgressIndicator()),
+                  if (_failed)
+                    ColoredBox(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              mongolian
+                                  ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.'
+                                  : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.',
+                            ),
+                            TextButton(
+                              onPressed: _openPublishedApp,
+                              child: Text(
+                                mongolian ? 'Дахин оролдох' : '다시 시도',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (iosAdProbeEnabled &&
+                      !kIsWeb &&
+                      defaultTargetPlatform == TargetPlatform.iOS)
+                    const Align(
+                      alignment: Alignment.bottomCenter,
+                      child: IosRewardAdProbe(),
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ),
