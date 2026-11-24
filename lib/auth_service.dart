@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:http/http.dart' as http;
 
 import 'phone_identity.dart';
 import 'firebase_options.dart';
@@ -52,13 +55,14 @@ class AuthService {
   }
 
   Future<void> signInWithGoogle(String language, String fallbackName) async {
-    final credential = nativeSocialLoginAvailable
-        ? await _auth.signInWithCustomToken(
-            await requestNativeSocialLogin('google'),
-          )
-        : kIsWeb
-        ? await _auth.signInWithPopup(GoogleAuthProvider())
-        : await _auth.signInWithCredential(await _googleCredential());
+    final credential =
+        nativeSocialLoginAvailable
+            ? await _auth.signInWithCustomToken(
+              await requestNativeSocialLogin('google'),
+            )
+            : kIsWeb
+            ? await _auth.signInWithPopup(GoogleAuthProvider())
+            : await _auth.signInWithCredential(await _googleCredential());
     await _prepareSocialProfile(credential, language, fallbackName);
   }
 
@@ -103,14 +107,62 @@ class AuthService {
 
   Future<void> signInWithApple(String language, String fallbackName) async {
     final provider = AppleAuthProvider()..addScope('name');
-    final credential = nativeSocialLoginAvailable
-        ? await _auth.signInWithCustomToken(
-            await requestNativeSocialLogin('apple'),
-          )
-        : kIsWeb
-        ? await _auth.signInWithPopup(provider)
-        : await _auth.signInWithProvider(provider);
+    final credential =
+        nativeSocialLoginAvailable
+            ? await _auth.signInWithCustomToken(
+              await requestNativeSocialLogin('apple'),
+            )
+            : kIsWeb
+            ? await _auth.signInWithPopup(provider)
+            : await _auth.signInWithProvider(provider);
     await _prepareSocialProfile(credential, language, fallbackName);
+  }
+
+  Future<FirebaseAuth> _legacyAuth() async {
+    final app =
+        await (_legacyApp ??= Firebase.initializeApp(
+          name: 'legacyAccountLink',
+          options: DefaultFirebaseOptions.currentPlatform,
+        ));
+    final auth = FirebaseAuth.instanceFor(app: app);
+    if (kIsWeb) await auth.setPersistence(Persistence.NONE);
+    return auth;
+  }
+
+  Future<void> signInForReview(PhoneIdentity phone, String password) async {
+    final auth = await _legacyAuth();
+    try {
+      final verified =
+          (await auth.signInWithEmailAndPassword(
+            email: phone.authAlias,
+            password: password,
+          )).user!;
+      final proof = await verified.getIdToken();
+      if (proof == null) throw StateError('reviewLoginError');
+      final response = await http
+          .post(
+            Uri.base.resolve('/review-auth'),
+            headers: {
+              'Authorization': 'Bearer $proof',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'purpose': 'review-sign-in'}),
+          )
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) throw StateError('reviewLoginError');
+      final token =
+          (jsonDecode(response.body) as Map<String, dynamic>)['token'];
+      if (token is! String || token.isEmpty) {
+        throw StateError('reviewLoginError');
+      }
+      final signedIn = await _auth.signInWithCustomToken(token);
+      if (signedIn.user?.uid != verified.uid) {
+        await _auth.signOut();
+        throw StateError('reviewLoginError');
+      }
+    } finally {
+      await auth.signOut();
+    }
   }
 
   Future<void> linkLegacyAccount({
@@ -118,21 +170,17 @@ class AuthService {
     required String password,
     required bool apple,
   }) async {
-    final app = await (_legacyApp ??= Firebase.initializeApp(
-      name: 'legacyAccountLink',
-      options: DefaultFirebaseOptions.currentPlatform,
-    ));
-    final auth = FirebaseAuth.instanceFor(app: app);
-    if (kIsWeb) await auth.setPersistence(Persistence.NONE);
+    final auth = await _legacyAuth();
     try {
-      final old = (await auth.signInWithEmailAndPassword(
-        email: phone.authAlias,
-        password: password,
-      )).user!;
-      final profile = await FirebaseFirestore.instanceFor(app: app)
-          .collection('users')
-          .doc(old.uid)
-          .get();
+      final old =
+          (await auth.signInWithEmailAndPassword(
+            email: phone.authAlias,
+            password: password,
+          )).user!;
+      final profile =
+          await FirebaseFirestore.instanceFor(
+            app: auth.app,
+          ).collection('users').doc(old.uid).get();
       if (!profile.exists || profile.data()?['deleted'] == true) {
         throw StateError('profileMissing');
       }
@@ -178,9 +226,10 @@ class AuthService {
         }
         if (!profile.exists) {
           tx.set(ref, {
-            'displayName': name.isEmpty
-                ? fallbackName
-                : String.fromCharCodes(name.runes.take(40)),
+            'displayName':
+                name.isEmpty
+                    ? fallbackName
+                    : String.fromCharCodes(name.runes.take(40)),
             'preferredLanguage': language,
             'createdAt': FieldValue.serverTimestamp(),
           });
@@ -257,10 +306,8 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>?> findByPhone(PhoneIdentity phone) async {
-    final directory = await _db
-        .collection('phoneDirectory')
-        .doc(phone.directoryKey)
-        .get();
+    final directory =
+        await _db.collection('phoneDirectory').doc(phone.directoryKey).get();
     final uid = directory.data()?['uid'] as String?;
     if (uid == null) return null;
     final profile = await _db.collection('users').doc(uid).get();

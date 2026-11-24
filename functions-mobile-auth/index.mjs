@@ -5,6 +5,10 @@ import {exchangeMobileLogin} from './mobile-login.mjs';
 
 initializeApp();
 
+const reviewUids = new Set(
+  (process.env.TONGYEOK_REVIEW_UIDS ?? '').split(',').map(uid => uid.trim()).filter(Boolean),
+);
+
 export const mobileAuthExchange = onRequest({
   region: 'asia-northeast3',
   cors: false,
@@ -23,6 +27,7 @@ export const mobileAuthExchange = onRequest({
     authorization: req.get('authorization'),
     purpose: req.body?.purpose,
     provider: req.body?.provider,
+    reviewUids,
     verify: token => auth.verifyIdToken(token, true),
     issue: uid => auth.createCustomToken(uid),
   });

@@ -3,6 +3,8 @@
   "hosting": {
     "site": "tongyeok-talk-lab-20261024",
     "public": "hosting",
+    "headers": [{"source": "/mobile/**", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}],
+    "rewrites": [{"source": "/review-auth", "function": {"functionId": "mobileAuthExchange", "region": "asia-northeast3"}}],
     "redirects": [{"source": "/", "destination": "https://dntprbs-maker.github.io/tongyeok-talk/", "type": 302}]
   },
   "firestore": {

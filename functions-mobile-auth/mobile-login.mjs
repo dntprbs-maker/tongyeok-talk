@@ -1,11 +1,14 @@
 const socialProviders = new Set(['google.com', 'apple.com']);
 
 export async function exchangeMobileLogin({
-  method, authorization, purpose, provider, verify, issue, now = Date.now(),
+  method, authorization, purpose, provider, verify, issue, reviewUids = new Set(),
+  now = Date.now(),
 }) {
   const error = (status, code) => ({status, body: {error: code}});
   if (method !== 'POST') return error(405, 'method-not-allowed');
-  if (!socialProviders.has(provider) ||
+  const review = purpose === 'review-sign-in';
+  if (review ? provider !== undefined :
+      !socialProviders.has(provider) ||
       !['sign-in', 'start-link', 'finish-link'].includes(purpose)) {
     return error(400, 'invalid-request');
   }
@@ -24,7 +27,9 @@ export async function exchangeMobileLogin({
   }
   const methodUsed = identity.firebase?.sign_in_provider;
   const linkedProvider = identity.firebase?.identities?.[provider];
-  const allowed = purpose === 'start-link'
+  const allowed = review
+    ? methodUsed === 'password' && reviewUids.has(identity.uid)
+    : purpose === 'start-link'
     ? methodUsed === 'password'
     : purpose === 'finish-link'
       ? methodUsed === 'custom' && Array.isArray(linkedProvider) && linkedProvider.length > 0

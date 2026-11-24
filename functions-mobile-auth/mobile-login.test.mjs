@@ -38,3 +38,16 @@ test('rejects unverified, stale, mismatched, and non-POST requests', async () =>
   assert.equal((await exchangeMobileLogin(input('google.com'))).status, 403);
   assert.equal((await exchangeMobileLogin(input('apple.com', {method: 'GET'}))).status, 405);
 });
+
+test('review access requires a recent password login for an allowlisted account', async () => {
+  const request = {purpose: 'review-sign-in', provider: undefined};
+  const review = {...request, reviewUids: new Set([uid])};
+  assert.equal((await exchangeMobileLogin(input('password', review))).status, 200);
+  assert.equal((await exchangeMobileLogin(input('password', request))).status, 403);
+  assert.equal((await exchangeMobileLogin(input('password', {...review, reviewUids: new Set(['other'])}))).status, 403);
+  for (const provider of ['apple.com', 'google.com', 'custom']) {
+    assert.equal((await exchangeMobileLogin(input(provider, review))).status, 403);
+  }
+  assert.equal((await exchangeMobileLogin(input('password', {...review, now: now + 301_000}))).status, 401);
+  assert.equal((await exchangeMobileLogin(input('password', {...review, provider: 'apple.com'}))).status, 400);
+});
