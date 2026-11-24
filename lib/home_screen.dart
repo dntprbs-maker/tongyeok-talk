@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'app_language.dart';
 import 'brand.dart';
+import 'social_login_platform.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+  static const _socialOnly = bool.fromEnvironment('TONGYEOK_SOCIAL_ONLY');
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
@@ -32,7 +34,12 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  tr(context, 'intro'),
+                  tr(
+                    context,
+                    (_socialOnly || nativeSocialLoginAvailable)
+                        ? 'socialIntro'
+                        : 'intro',
+                  ),
                   textAlign: TextAlign.center,
                   style: const TextStyle(height: 1.6, color: Colors.black54),
                 ),
@@ -46,16 +53,18 @@ class HomeScreen extends StatelessWidget {
                       ),
                   child: Text(tr(context, 'signIn')),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed:
-                      () => Navigator.pushNamed(
-                        context,
-                        '/auth',
-                        arguments: true,
-                      ),
-                  child: Text(tr(context, 'signUp')),
-                ),
+                if (!_socialOnly && !nativeSocialLoginAvailable) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed:
+                        () => Navigator.pushNamed(
+                          context,
+                          '/auth',
+                          arguments: true,
+                        ),
+                    child: Text(tr(context, 'signUp')),
+                  ),
+                ],
               ],
             ),
           ),

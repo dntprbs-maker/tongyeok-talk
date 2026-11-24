@@ -1,0 +1,372 @@
+name: Build and upload iOS TestFlight
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: Explicit iOS internal build number (3000 series)
+        type: string
+        required: false
+      app_variant:
+        description: Select the iOS application to build
+        type: choice
+        options:
+          - web
+          - native
+        default: web
+      native_rewards:
+        description: Enable the tested iOS rewarded-ad bridge in this internal build
+        type: boolean
+        default: false
+      native_push:
+        description: Enable app-specific Apple push in this internal build
+        type: boolean
+        default: false
+      ads_test_mode:
+        description: Use sample ads without granting credit
+        type: boolean
+        default: true
+      social_login:
+        description: Use the shared web app with Apple and Google login
+        type: boolean
+        default: false
+  push:
+    branches: [codex/ios-web-shell-check-20261114, codex/ios-web-testflight-20261118]
+    paths:
+      - .github/workflows/ios-testflight.yml
+      - lib/main_web_shell.dart
+      - lib/phone_identity.dart
+      - lib/new_conversation_screen.dart
+      - lib/referral_screen.dart
+      - assets/images/referral-announcement.png
+permissions:
+  contents: read
+jobs:
+  testflight:
+    runs-on: macos-26-intel
+    timeout-minutes: 45
+    env:
+      APP_VARIANT: ${{ github.event_name == 'workflow_dispatch' && inputs.app_variant || (github.ref_name == 'codex/ios-web-testflight-20261118' && 'web' || 'native') }}
+      NATIVE_PUSH: ${{ inputs.native_push == true && 'true' || 'false' }}
+      NATIVE_REWARDS: ${{ inputs.native_rewards == true && 'true' || 'false' }}
+      ADS_TEST_MODE: ${{ inputs.ads_test_mode == false && github.event_name == 'workflow_dispatch' && 'false' || 'true' }}
+      REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+      SOCIAL_LOGIN: ${{ inputs.social_login == true && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve internal build metadata
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUESTED_BUILD_NUMBER" ]]; then
+            [[ "$REQUESTED_BUILD_NUMBER" =~ ^3[0-9]{3}$ ]]
+            build_number="$REQUESTED_BUILD_NUMBER"
+            build_name=1.0.1
+            ad_diagnostics=true
+          else
+            build_number="$((1000 + GITHUB_RUN_NUMBER))"
+            build_name=1.0.0
+            ad_diagnostics=false
+          fi
+          printf '%s\n' "BUILD_NUMBER=$build_number" "BUILD_NAME=$build_name" "AD_DIAGNOSTICS=$ad_diagnostics" >> "$GITHUB_ENV"
+      - name: Install Flutter
+        run: |
+          git init "$RUNNER_TEMP/flutter"
+          git -C "$RUNNER_TEMP/flutter" remote add origin https://github.com/flutter/flutter.git
+          git -C "$RUNNER_TEMP/flutter" fetch --depth 1 origin tag 3.47.8
+          git -C "$RUNNER_TEMP/flutter" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/flutter" rev-parse HEAD)" = 737ba8f885dc774b53b442759999a312c9461e4e
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Prepare and test application
+        env:
+          GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          [[ "$GOOGLE_IOS_CLIENT_ID" =~ ^[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$ ]]
+          flutter create --platforms=ios --org com --project-name tongyeoktalk "$RUNNER_TEMP/tongyeok-app"
+          cd "$RUNNER_TEMP/tongyeok-app"
+          rm test/widget_test.dart
+          cp "$GITHUB_WORKSPACE/pubspec.yaml" "$GITHUB_WORKSPACE/pubspec.lock" .
+          cp -R "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/lib" "$GITHUB_WORKSPACE/test" .
+          # Use the existing approved Tongyeok artwork for every generated iOS
+          # icon size rather than shipping Flutter's template icon.
+          python3 "$GITHUB_WORKSPACE/tools/prepare_ios_release_icons.py" \
+            "$GITHUB_WORKSPACE/assets/images/interpreter-talk.png" \
+            ios/Runner/Assets.xcassets/AppIcon.appiconset
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          client_id = os.environ["GOOGLE_IOS_CLIENT_ID"]
+          path = Path("ios/Runner/Info.plist")
+          with path.open("rb") as file:
+              info = plistlib.load(file)
+          info["CFBundleDisplayName"] = "통역톡"
+          info["GIDClientID"] = client_id
+          info["UISupportedInterfaceOrientations"] = ["UIInterfaceOrientationPortrait"]
+          info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
+          info["UIRequiresFullScreen"] = True
+          info["FlutterDeepLinkingEnabled"] = False
+          if os.environ.get("NATIVE_PUSH") == "true":
+              info["UIBackgroundModes"] = ["remote-notification"]
+          info["ITSAppUsesNonExemptEncryption"] = False
+          info.setdefault("CFBundleURLTypes", []).append({
+              "CFBundleTypeRole": "Editor",
+              "CFBundleURLSchemes": ["tongyeoktalk"],
+          })
+          info.setdefault("CFBundleURLTypes", []).append({
+              "CFBundleTypeRole": "Editor",
+              "CFBundleURLSchemes": [
+                  ".".join(reversed(client_id.split("."))),
+              ],
+          })
+          with path.open("wb") as file:
+              plistlib.dump(info, file)
+          with Path("ios/Runner/Runner.entitlements").open("wb") as file:
+              entitlements = {"com.apple.developer.applesignin": ["Default"]}
+              if os.environ.get("NATIVE_PUSH") == "true":
+                  entitlements["aps-environment"] = "production"
+              plistlib.dump(entitlements, file)
+          delegate = Path("ios/Runner/AppDelegate.swift")
+          swift = delegate.read_text()
+          registration = "    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)"
+          assert swift.count(registration) == 1
+          swift = swift.replace("import Flutter\n", "import Flutter\nimport MessageUI\n")
+          swift = swift.replace(registration, registration + """
+              let invite = FlutterMethodChannel(
+                name: "tongyeok/invite",
+                binaryMessenger: engineBridge.applicationRegistrar.messenger()
+              )
+              invite.setMethodCallHandler { [weak self] call, result in
+                guard call.method == "composeSms" else {
+                  result(FlutterMethodNotImplemented)
+                  return
+                }
+                guard let self = self,
+                      let args = call.arguments as? [String: String],
+                      let phone = args["phone"], let body = args["body"],
+                      MFMessageComposeViewController.canSendText(),
+                      let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+                        .first(where: { $0.activationState == .foregroundActive }),
+                      var presenter = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                  result(FlutterError(code: "unavailable", message: nil, details: nil))
+                  return
+                }
+                while let presented = presenter.presentedViewController { presenter = presented }
+                let composer = MFMessageComposeViewController()
+                composer.recipients = [phone]
+                composer.body = body
+                composer.messageComposeDelegate = self
+                presenter.present(composer, animated: true) { result(nil) }
+              }
+          """)
+          swift += """
+          extension AppDelegate: MFMessageComposeViewControllerDelegate {
+            func messageComposeViewController(
+              _ controller: MFMessageComposeViewController,
+              didFinishWith result: MessageComposeResult
+            ) {
+              controller.dismiss(animated: true)
+            }
+          }
+          """
+          if os.environ["NATIVE_PUSH"] == "true":
+              swift = swift.replace("import MessageUI\n", "import MessageUI\nimport FirebaseMessaging\n")
+              swift = swift.replace(registration, registration + """
+                  let pushRegistration = FlutterMethodChannel(
+                    name: "tongyeok/pushRegistration",
+                    binaryMessenger: engineBridge.applicationRegistrar.messenger()
+                  )
+                  pushRegistration.setMethodCallHandler { call, result in
+                    guard call.method == "register" else {
+                      result(FlutterMethodNotImplemented)
+                      return
+                    }
+                    UIApplication.shared.registerForRemoteNotifications()
+                    result(nil)
+                  }
+              """)
+              marker = "  func didInitializeImplicitFlutterEngine("
+              assert swift.count(marker) == 1
+              swift = swift.replace(marker, """
+                override func application(
+                  _ application: UIApplication,
+                  didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+                ) {
+                  Messaging.messaging().apnsToken = deviceToken
+                  super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+                }
+
+              """ + marker)
+          delegate.write_text(swift)
+          PY
+          flutter pub get
+          if [[ "$APP_VARIANT" == web ]]; then
+            flutter pub add webview_flutter:4.14.1 google_mobile_ads:9.2.0
+            ad_app_id=ca-app-pub-3940256099942544~1458002511
+            if [[ "$NATIVE_REWARDS" == true ]]; then
+              ad_app_id=ca-app-pub-7142914884555224~3669140398
+            fi
+            /usr/libexec/PlistBuddy -c "Add :GADApplicationIdentifier string $ad_app_id" ios/Runner/Info.plist
+            flutter test test/mobile_web_navigation_test.dart
+          fi
+          flutter test
+      - name: Configure signing
+        env:
+          P12: ${{ secrets.IOS_SIGNING_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_SIGNING_P12_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$P12" && test -n "$P12_PASSWORD" && test -n "$PROFILE"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/ci.keychain-db"
+          security set-keychain-settings -lut 21600 "$RUNNER_TEMP/ci.keychain-db"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/ci.keychain-db"
+          security import "$RUNNER_TEMP/signing.p12" -k "$RUNNER_TEMP/ci.keychain-db" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$RUNNER_TEMP/ci.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/ci.keychain-db" "$HOME/Library/Keychains/login.keychain-db"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+          if [[ "$NATIVE_PUSH" == true ]]; then
+            export IOS_EXISTING_PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+            export IOS_PUSH_PROFILE_OUTPUT="$RUNNER_TEMP/profile.mobileprovision"
+            node --test tools/prepare_ios_push_profile.test.mjs
+            node tools/prepare_ios_push_profile.mjs
+            security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" -o "$RUNNER_TEMP/profile.plist"
+            /usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$RUNNER_TEMP/profile.plist" | grep -Fx production
+          fi
+          /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.applesignin:0' "$RUNNER_TEMP/profile.plist" | grep -Fx Default
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$UUID.mobileprovision"
+      - name: Build signed app
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/tongyeok-app"
+          target=lib/main.dart
+          if [[ "$APP_VARIANT" == web ]]; then
+            target=lib/main_web_shell.dart
+          fi
+          if [[ "$SOCIAL_LOGIN" == true ]]; then [[ "$APP_VARIANT" == web ]]; fi
+          flutter build ios --release --no-codesign --target "$target" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NUMBER="$BUILD_NUMBER" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE" --dart-define=TONGYEOK_IOS_AD_DIAGNOSTICS="$AD_DIAGNOSTICS" --dart-define=TONGYEOK_SOCIAL_ONLY="$SOCIAL_LOGIN"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
+          export PROFILE_NAME
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("ios/Runner.xcodeproj/project.pbxproj")
+          project = path.read_text()
+          bundle = "PRODUCT_BUNDLE_IDENTIFIER = com.tongyeoktalk;"
+          assert bundle in project
+          settings = (
+              ' CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = 57QZYL899B;'
+              ' CODE_SIGN_IDENTITY = "Apple Distribution";'
+              ' CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;'
+              f' PROVISIONING_PROFILE_SPECIFIER = "{os.environ["PROFILE_NAME"]}";'
+          )
+          path.write_text(project.replace(bundle, bundle + settings))
+          PY
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" archive
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$RUNNER_TEMP/Tongyeok.xcarchive/Products/Applications/Runner.app/Info.plist" | grep -Fx "$BUILD_NUMBER"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$RUNNER_TEMP/Tongyeok.xcarchive/Products/Applications/Runner.app/Info.plist" | grep -Fx "$BUILD_NAME"
+          python3 - <<'PY'
+          import os
+          import plistlib
+          from pathlib import Path
+
+          with (Path(os.environ["RUNNER_TEMP"]) / "ExportOptions.plist").open("wb") as file:
+              plistlib.dump({
+                  "method": "app-store-connect",
+                  "teamID": "57QZYL899B",
+                  "signingStyle": "manual",
+                  "signingCertificate": "Apple Distribution",
+                  "provisioningProfiles": {"com.tongyeoktalk": os.environ["PROFILE_NAME"]},
+              }, file)
+          PY
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Tongyeok.xcarchive" -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+      - name: Upload to TestFlight
+        env:
+          ASC_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$ASC_KEY" && test -n "$ASC_KEY_ID" && test -n "$ASC_ISSUER_ID"
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s' "$ASC_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+          IPA=$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$IPA"
+          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          node --input-type=module <<'JS'
+          import { sign } from 'node:crypto';
+          import { setTimeout as delay } from 'node:timers/promises';
+
+          const buildNumber = process.env.BUILD_NUMBER;
+          const encode = data => Buffer.from(JSON.stringify(data)).toString('base64url');
+          async function apple(path, query, data) {
+            const now = Math.floor(Date.now() / 1000);
+            const header = encode({ alg: 'ES256', kid: process.env.ASC_KEY_ID, typ: 'JWT' });
+            const claims = encode({ iss: process.env.ASC_ISSUER_ID, iat: now, exp: now + 300, aud: 'appstoreconnect-v1' });
+            const input = header + '.' + claims;
+            const signature = sign('sha256', Buffer.from(input), {
+              key: process.env.ASC_KEY,
+              dsaEncoding: 'ieee-p1363',
+            }).toString('base64url');
+            const url = new URL(path, 'https://api.appstoreconnect.apple.com');
+            url.search = new URLSearchParams(query);
+            const response = await fetch(url, {
+              method: data ? 'POST' : 'GET',
+              headers: { Authorization: 'Bearer ' + input + '.' + signature, 'Content-Type': 'application/json' },
+              body: data ? JSON.stringify({ data }) : undefined,
+            });
+            if (!response.ok) throw Error('App Store Connect returned ' + response.status + ' for ' + path);
+            if (response.status === 204) return;
+            return response.json();
+          }
+
+          const { data: [app] } = await apple('/v1/apps', { 'filter[bundleId]': 'com.tongyeoktalk' });
+          if (!app) throw Error('App Store Connect app not found');
+          let groupAssignmentChecked = false;
+          for (let attempt = 0; attempt < 30; attempt++) {
+            const { data: [build] } = await apple('/v1/builds', {
+              'filter[app]': app.id,
+              'filter[version]': buildNumber,
+            });
+            if (build) {
+              const { data: [detail] } = await apple('/v1/buildBetaDetails', { 'filter[build]': build.id });
+              const internal = detail?.attributes.internalBuildState;
+              console.log('Build', buildNumber, build.attributes.processingState, internal ?? 'pending');
+              if (internal === 'IN_BETA_TESTING') {
+                console.log('TestFlight internal testing active for build', buildNumber);
+                process.exit(0);
+              }
+              if (['FAILED', 'INVALID'].includes(build.attributes.processingState) ||
+                  ['PROCESSING_EXCEPTION', 'MISSING_EXPORT_COMPLIANCE'].includes(internal)) {
+                throw Error('TestFlight build needs attention');
+              }
+              if (process.env.APP_VARIANT === 'web' && internal === 'READY_FOR_BETA_TESTING' && !groupAssignmentChecked) {
+                const { data: [previous] } = await apple('/v1/builds', {
+                  'filter[app]': app.id, 'filter[version]': '1012',
+                });
+                if (!previous) throw Error('Existing internal build 1012 was not found');
+                const { data: groups } = await apple('/v1/builds/' + previous.id + '/betaGroups', {});
+                const internalGroups = groups.filter(group => group.attributes.isInternalGroup);
+                if (internalGroups.length === 0) throw Error('Existing build 1012 has no internal beta group');
+                await apple('/v1/builds/' + build.id + '/relationships/betaGroups', {}, internalGroups.map(
+                  group => ({ type: 'betaGroups', id: group.id }),
+                ));
+                groupAssignmentChecked = true;
+              }
+            }
+            await delay(20000);
+          }
+          throw Error('Upload accepted, but TestFlight availability was not confirmed');
+          JS

@@ -1,11 +1,14 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+
 import 'auth_service.dart';
+
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+
 import 'app_language.dart';
 import 'reward_ad_service.dart';
 import 'ui_errors.dart';
@@ -22,17 +25,15 @@ class AccountDeletionScreen extends StatefulWidget {
 class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
   final _password = TextEditingController();
   final _user = FirebaseAuth.instance.currentUser!;
-  bool get _usesPassword =>
-      !_user.providerData.any(
-        (p) => p.providerId == 'google.com' || p.providerId == 'apple.com',
-      );
+  bool get _usesPassword => !_user.providerData.any(
+    (p) => p.providerId == 'google.com' || p.providerId == 'apple.com',
+  );
   bool _confirmed = false, _busy = false;
   String? _error;
-  late final _status =
-      FirebaseFirestore.instance
-          .collection('accountDeletionRequests')
-          .doc(_user.uid)
-          .snapshots();
+  late final _status = FirebaseFirestore.instance
+      .collection('accountDeletionRequests')
+      .doc(_user.uid)
+      .snapshots();
   @override
   void dispose() {
     _password.clear();
@@ -53,11 +54,7 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
       if (providers.contains('google.com')) {
         await AuthService().reauthenticateGoogle(_user);
       } else if (providers.contains('apple.com')) {
-        if (kIsWeb) {
-          await _user.reauthenticateWithPopup(AppleAuthProvider());
-        } else {
-          await _user.reauthenticateWithProvider(AppleAuthProvider());
-        }
+        await AuthService().reauthenticateApple(_user);
       } else {
         final email = _user.email;
         if (email == null) throw StateError('deletionFailed');
@@ -66,7 +63,9 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
         );
       }
       _password.clear();
-      final token = await _user.getIdToken(true);
+      final current = FirebaseAuth.instance.currentUser;
+      if (current?.uid != _user.uid) throw StateError('deletionFailed');
+      final token = await current!.getIdToken(true);
       final result = await http
           .post(
             Uri.parse('$rewardBackend/account-deletion-requests'),
@@ -149,20 +148,18 @@ class _AccountDeletionScreenState extends State<AccountDeletionScreen> {
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   value: _confirmed,
-                  onChanged:
-                      _busy
-                          ? null
-                          : (value) =>
-                              setState(() => _confirmed = value ?? false),
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _confirmed = value ?? false),
                   title: Text(tr(context, 'deletionAcknowledge')),
                 ),
                 FilledButton(
                   onPressed:
                       _busy ||
-                              !_confirmed ||
-                              (_usesPassword && _password.text.isEmpty)
-                          ? null
-                          : _request,
+                          !_confirmed ||
+                          (_usesPassword && _password.text.isEmpty)
+                      ? null
+                      : _request,
                   child: Text(tr(context, 'deletionSubmit')),
                 ),
               ],

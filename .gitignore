@@ -7,3 +7,4 @@ node_modules/
 .firebase/
 artifacts/
 credentials/
+hosting/mobile/

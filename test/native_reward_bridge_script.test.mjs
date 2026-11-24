@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 const dart=readFileSync(new URL('../lib/native_reward_bridge_script.dart',import.meta.url),'utf8');
 const nonce='reward_page_nonce_12345678901234567890123456789';
 const script=dart.match(/const _script = r'''([\s\S]*?)''';/)[1]
-  .replace('__NONCE_JSON__',JSON.stringify(nonce)).replace('__TEST_MODE__','false');
+  .replace('__NONCE_JSON__',JSON.stringify(nonce)).replace('__TEST_MODE__','false')
+  .replace('__PLATFORM__','"ios"');
 const uid='QA_user_12345678901234567890';
 function fixture({subframe=false,version=1}={}) {
   const requests=[],timers=new Map(),events=[];let next=0;
@@ -22,6 +23,7 @@ function fixture({subframe=false,version=1}={}) {
 test('bridge advertises native support only to the current web protocol and top frame',()=>{
   const f=fixture();assert.equal(f.window.tongyeokNativeRewardSupported,true);
   assert.equal(f.window.tongyeokNativeRewardTestMode,false);
+  assert.equal(f.window.tongyeokNativeRewardPlatform,'ios');
   assert.deepEqual(f.events,['tongyeok-native-reward-ready']);
   assert.equal(fixture({subframe:true}).window.tongyeokRewardPrepare,undefined);
   assert.equal(fixture({version:null}).window.tongyeokRewardPrepare,undefined);

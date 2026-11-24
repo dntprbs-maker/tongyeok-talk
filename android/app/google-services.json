@@ -1,0 +1,70 @@
+{
+  "project_info": {
+    "project_number": "899237147853",
+    "project_id": "tongyeok-talk-lab-20261024",
+    "storage_bucket": "tongyeok-talk-lab-20261024.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899237147853:android:6716e34a58e6ba18b1e584",
+        "android_client_info": {
+          "package_name": "com.tongyeoktalk"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899237147853-89f5mt83ihm7ld2d6b7f17gnaq20de0k.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tongyeoktalk",
+            "certificate_hash": "f9ee7e68815e0b34518d0e7e002e3ffd101d2400"
+          }
+        },
+        {
+          "client_id": "899237147853-b93vi94nv0ft03pr1jcg2klfirdldno2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tongyeoktalk",
+            "certificate_hash": "b30189d92cd6151bd0540a8a62f6b43554a7bf80"
+          }
+        },
+        {
+          "client_id": "899237147853-lniefi42rvka1slacqcqg7fpq1f1mbh2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tongyeoktalk",
+            "certificate_hash": "2be3a57e782d903fe1d9f85184522e120c03f608"
+          }
+        },
+        {
+          "client_id": "899237147853-udofern3rbcjil4n4utlefjafl1tcvb8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAIT93XemMpAdmAx31ZARRS-IE1hS-oUac"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899237147853-udofern3rbcjil4n4utlefjafl1tcvb8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "899237147853-k1kb93inqi8a139kl38iapgh49uolcjh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tongyeoktalk"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

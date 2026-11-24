@@ -1,4 +1,10 @@
 {
+  "functions": [{"source": "functions-mobile-auth", "codebase": "mobile-auth"}],
+  "hosting": {
+    "site": "tongyeok-talk-lab-20261024",
+    "public": "hosting",
+    "redirects": [{"source": "/", "destination": "https://dntprbs-maker.github.io/tongyeok-talk/", "type": 302}]
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

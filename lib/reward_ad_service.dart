@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+
 import 'reward_platform.dart' as native_reward;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -19,10 +21,9 @@ const _androidTestUnit = 'ca-app-pub-3940256099942544/5224354917';
 const _localBackend = String.fromEnvironment('TONGYEOK_REWARD_BACKEND');
 const _liveBackend =
     'https://asia-northeast3-tongyeok-talk-lab-20261024.cloudfunctions.net/rewardApi';
-bool get rewardAdsSupported =>
-    kIsWeb
-        ? native_reward.supported
-        : defaultTargetPlatform == TargetPlatform.android;
+bool get rewardAdsSupported => kIsWeb
+    ? native_reward.supported
+    : defaultTargetPlatform == TargetPlatform.android;
 bool get effectiveRewardTestMode =>
     kIsWeb ? native_reward.testMode : rewardAdsTestMode;
 bool get rewardPreviewOnly =>
@@ -93,7 +94,7 @@ class RewardAdService {
             },
             body: jsonEncode({
               'testAds': effectiveRewardTestMode,
-              'platform': kIsWeb ? 'ios' : 'android',
+              'platform': kIsWeb ? native_reward.platform : 'android',
             }),
           )
           .timeout(const Duration(seconds: 20));

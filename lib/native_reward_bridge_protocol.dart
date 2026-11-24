@@ -1,9 +1,13 @@
 import 'dart:convert';
+
 import 'mobile_web_navigation.dart';
 
 const iosRewardSampleUnit = 'ca-app-pub-3940256099942544/1712485313';
 const iosRewardMemberUnit = 'ca-app-pub-7142914884555224/8993940063';
 const iosRewardLeaderUnit = 'ca-app-pub-7142914884555224/6918120261';
+const androidRewardSampleUnit = 'ca-app-pub-3940256099942544/5224354917';
+const androidRewardMemberUnit = 'ca-app-pub-7142914884555224/6464698858';
+const androidRewardLeaderUnit = 'ca-app-pub-7142914884555224/4167652668';
 
 /// A server-issued session crosses the bridge; login credentials never do.
 class NativeRewardRequest {
@@ -24,6 +28,7 @@ class NativeRewardRequest {
     String nonce,
     Uri? page, {
     required bool testMode,
+    bool android = false,
   }) {
     if (raw.length > 1536 ||
         nonce.length < 32 ||
@@ -45,13 +50,17 @@ class NativeRewardRequest {
       final keys = {'id', 'action', 'uid', 'nonce'};
       if (action == 'show') {
         keys.addAll({'sessionId', 'adUnitId', 'testAds'});
+        final units = android
+            ? (testMode
+                  ? {androidRewardSampleUnit}
+                  : {androidRewardMemberUnit, androidRewardLeaderUnit})
+            : (testMode
+                  ? {iosRewardSampleUnit}
+                  : {iosRewardMemberUnit, iosRewardLeaderUnit});
         if (data['sessionId'] is! String ||
             !RegExp(r'^[a-f0-9]{64}$').hasMatch(data['sessionId']) ||
             data['testAds'] != testMode ||
-            !(testMode
-                    ? {iosRewardSampleUnit}
-                    : {iosRewardMemberUnit, iosRewardLeaderUnit})
-                .contains(data['adUnitId'])) {
+            !units.contains(data['adUnitId'])) {
           return null;
         }
       } else if (action != 'prepare' && action != 'privacy') {

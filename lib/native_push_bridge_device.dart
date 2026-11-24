@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'firebase_options.dart';
 
 /// The authenticated web app remains responsible for writing its own
@@ -13,16 +17,30 @@ class NativePushBridgeDevice {
   static const _token = 'tongyeok.shell.pushToken';
   static const _confirmed = 'tongyeok.shell.pushConfirmed';
   Future<void>? _initialization;
+  bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
 
-  Future<void> _initialize() =>
-      _initialization ??= () async {
-        if (Firebase.apps.isEmpty) {
-          await Firebase.initializeApp(options: DefaultFirebaseOptions.ios);
-        }
-      }();
+  Future<void> _initialize() => _initialization ??= () async {
+    if (!Firebase.apps.any((app) => app.name == '[DEFAULT]')) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    if (!_ios) return;
+    // The implicit Flutter engine may register plugins after the iOS
+    // launch notification used by older messaging plugins has passed.
+    await const MethodChannel('tongyeok/pushRegistration')
+        .invokeMethod<void>('register');
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+  }();
 
   Future<String> run(String action, String uid) async {
     await _initialize();
+    debugPrint('TT_IOS_PUSH_INITIALIZED');
     final prefs = await SharedPreferences.getInstance();
     final messaging = FirebaseMessaging.instance;
     final owner = prefs.getString(_owner);
@@ -57,14 +75,13 @@ class NativePushBridgeDevice {
       return 'enabled';
     }
     if (action == 'enable') await prefs.remove(_confirmed);
-    final settings =
-        action == 'enable'
-            ? await messaging.requestPermission(
-              alert: true,
-              badge: true,
-              sound: true,
-            )
-            : await messaging.getNotificationSettings();
+    final settings = action == 'enable'
+        ? await messaging.requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+          )
+        : await messaging.getNotificationSettings();
     if (settings.authorizationStatus == AuthorizationStatus.denied) {
       return 'denied';
     }
@@ -72,17 +89,20 @@ class NativePushBridgeDevice {
         settings.authorizationStatus != AuthorizationStatus.provisional) {
       return 'off';
     }
-    var apns = await messaging.getAPNSToken();
-    for (
-      var attempt = 0;
-      action == 'enable' && apns == null && attempt < 10;
-      attempt++
-    ) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      apns = await messaging.getAPNSToken();
+    if (_ios) {
+      var apns = await messaging.getAPNSToken();
+      for (
+        var attempt = 0;
+        action == 'enable' && apns == null && attempt < 10;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        apns = await messaging.getAPNSToken();
+      }
+      if (apns == null) return action == 'state' ? 'off' : 'unsupported';
     }
-    if (apns == null) return action == 'state' ? 'off' : 'unsupported';
     final token = await messaging.getToken();
+    debugPrint('TT_IOS_PUSH_FCM_READY');
     if (token == null) return 'off';
     if (action == 'state') {
       return prefs.getString(_owner) == uid &&

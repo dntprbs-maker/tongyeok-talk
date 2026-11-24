@@ -1,19 +1,29 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+
 import 'native_reward_bridge_protocol.dart';
 
 class NativeRewardBridgeDevice {
+  static const _diagnostics = bool.fromEnvironment(
+    'TONGYEOK_IOS_AD_DIAGNOSTICS',
+  );
   bool _ready = false;
   final Set<String> _used = {};
   Future<void>? _initialization;
 
   Future<void> _prepare() async {
+    // Keep ads contextual and disable the SDK's publisher first-party ID.
+    await MobileAds.instance.setSameAppKeyEnabled(false);
     final updated = Completer<void>();
     ConsentInformation.instance.requestConsentInfoUpdate(
       ConsentRequestParameters(),
       () => updated.complete(),
-      (_) => updated.completeError(StateError('adConsentFailed')),
+      (error) {
+        debugPrint('TT_IOS_AD_CONSENT_UPDATE_FAILED code=${error.errorCode}');
+        updated.completeError(StateError('adConsentFailed'));
+      },
     );
     await updated.future.timeout(const Duration(seconds: 30));
     final form = Completer<void>();
@@ -21,11 +31,13 @@ class NativeRewardBridgeDevice {
       if (error == null) {
         form.complete();
       } else {
+        debugPrint('TT_IOS_AD_CONSENT_FORM_FAILED');
         form.completeError(StateError('adConsentFailed'));
       }
     });
     await form.future.timeout(const Duration(seconds: 60));
     if (!await ConsentInformation.instance.canRequestAds()) {
+      debugPrint('TT_IOS_AD_CONSENT_NOT_READY');
       throw StateError('adConsentFailed');
     }
     _initialization ??= MobileAds.instance.initialize().then((_) {});
@@ -71,7 +83,13 @@ class NativeRewardBridgeDevice {
               loaded.complete(value);
             }
           },
-          onAdFailedToLoad: (_) {
+          onAdFailedToLoad: (error) {
+            debugPrint(
+              'TT_IOS_AD_LOAD_FAILED domain=${error.domain} code=${error.code}',
+            );
+            if (_diagnostics) {
+              debugPrint('TT_IOS_AD_LOAD_MESSAGE ${error.message}');
+            }
             if (!loaded.isCompleted) {
               loaded.completeError(StateError('adLoadFailed'));
             }
@@ -100,6 +118,9 @@ class NativeRewardBridgeDevice {
           if (!dismissed.isCompleted) dismissed.complete(earned);
         },
         onAdFailedToShowFullScreenContent: (_, error) {
+          debugPrint(
+            'TT_IOS_AD_SHOW_FAILED domain=${error.domain} code=${error.code}',
+          );
           if (!dismissed.isCompleted) {
             dismissed.completeError(StateError('adLoadFailed'));
           }
@@ -109,9 +130,11 @@ class NativeRewardBridgeDevice {
         onUserEarnedReward: (_, reward) {
           earned = true;
           if (kDebugMode) {
-            debugPrint(request.testAds
-                ? 'TT_IOS_NATIVE_REWARD_SAMPLE_EARNED_NO_CREDIT'
-                : 'TT_IOS_NATIVE_REWARD_EARNED_WAIT_SERVER');
+            debugPrint(
+              request.testAds
+                  ? 'TT_IOS_NATIVE_REWARD_SAMPLE_EARNED_NO_CREDIT'
+                  : 'TT_IOS_NATIVE_REWARD_EARNED_WAIT_SERVER',
+            );
           }
         },
       );

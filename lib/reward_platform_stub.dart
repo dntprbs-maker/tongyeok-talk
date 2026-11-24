@@ -1,5 +1,6 @@
 bool get supported => false;
 bool get testMode => true;
+String get platform => 'ios';
 void Function() listenAvailability(void Function() callback) => () {};
 Future<void> prepare(String uid) async => throw StateError('adUnavailable');
 Future<bool> show(

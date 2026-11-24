@@ -20,13 +20,28 @@ void main() {
   NativeRewardRequest? parse(
     Map<String, dynamic> data, {
     bool testMode = true,
+    bool android = false,
     Uri? uri,
   }) => NativeRewardRequest.parse(
     jsonEncode(data),
     nonce,
     uri ?? page,
     testMode: testMode,
+    android: android,
   );
+  test('Android accepts its own approved units and rejects iOS units', () {
+    final sample = request('show')..['adUnitId'] = androidRewardSampleUnit;
+    expect(parse(sample, android: true)?.adUnitId, androidRewardSampleUnit);
+    expect(parse(request('show'), android: true), isNull);
+    final real =
+        request('show')
+          ..['adUnitId'] = androidRewardMemberUnit
+          ..['testAds'] = false;
+    expect(
+      parse(real, testMode: false, android: true)?.adUnitId,
+      androidRewardMemberUnit,
+    );
+  });
   test('only prepare, privacy and a pinned iOS show request are accepted', () {
     for (final action in ['prepare', 'privacy', 'show']) {
       expect(parse(request(action))?.action, action);

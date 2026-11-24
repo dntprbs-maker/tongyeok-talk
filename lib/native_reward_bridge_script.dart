@@ -1,9 +1,13 @@
 import 'dart:convert';
 
-String nativeRewardBridgeScript(String nonce, {required bool testMode}) =>
-    _script
-        .replaceAll('__NONCE_JSON__', jsonEncode(nonce))
-        .replaceAll('__TEST_MODE__', jsonEncode(testMode));
+String nativeRewardBridgeScript(
+  String nonce, {
+  required bool testMode,
+  bool android = false,
+}) => _script
+    .replaceAll('__NONCE_JSON__', jsonEncode(nonce))
+    .replaceAll('__TEST_MODE__', jsonEncode(testMode))
+    .replaceAll('__PLATFORM__', jsonEncode(android ? 'android' : 'ios'));
 
 const _script = r'''
 (() => {
@@ -32,6 +36,7 @@ const _script = r'''
     request('show', uid, {sessionId, adUnitId, testAds});
   window.tongyeokRewardPrivacy = uid => request('privacy', uid);
   window.tongyeokNativeRewardTestMode = __TEST_MODE__;
+  window.tongyeokNativeRewardPlatform = __PLATFORM__;
   window.tongyeokNativeRewardSupported = true;
   if (typeof Event === 'function' && typeof window.dispatchEvent === 'function')
     window.dispatchEvent(new Event('tongyeok-native-reward-ready'));

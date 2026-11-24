@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+
 import 'auth_service.dart';
 import 'phone_identity.dart';
 import 'app_language.dart';
 import 'brand.dart';
 import 'ui_errors.dart';
+import 'social_login_platform.dart';
 
 class AuthScreen extends StatefulWidget {
   final bool isSignUp;
@@ -23,13 +25,19 @@ class _AuthScreenState extends State<AuthScreen> {
   late bool _signUp;
   bool _busy = false, _obscure = true;
   bool _showPhone = false;
+  static const _socialOnly = bool.fromEnvironment('TONGYEOK_SOCIAL_ONLY');
   String? _error;
 
   bool get _socialAvailable =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+      _socialOnly ||
+      nativeSocialLoginAvailable ||
+      (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _linking =>
+      _showPhone && (_socialOnly || nativeSocialLoginAvailable);
 
   Future<void> _submitSocial({required bool apple}) async {
-    if (_busy) return;
+    if (_busy || (_linking && !_form.currentState!.validate())) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -38,7 +46,23 @@ class _AuthScreenState extends State<AuthScreen> {
       final language = AppLanguage.instance.profileLanguage;
       final name = tr(context, 'socialDefaultName');
       final service = AuthService();
-      if (apple) {
+      if (_linking) {
+        await service.linkLegacyAccount(
+          phone: PhoneIdentity.parseKorean(_phone.text),
+          password: _password.text,
+          apple: apple,
+        );
+        _password.clear();
+        if (FirebaseAuth.instance.currentUser == null) {
+          if (mounted) {
+            setState(() {
+              _showPhone = false;
+              _error = 'accountLinked';
+            });
+          }
+          return;
+        }
+      } else if (apple) {
         await service.signInWithApple(language, name);
       } else {
         await service.signInWithGoogle(language, name);
@@ -78,7 +102,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _submit() async {
-    if (_busy || !_form.currentState!.validate()) return;
+    if (_linking || _busy || !_form.currentState!.validate()) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -126,31 +150,44 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(height: 24),
                     const BrandHeader(compact: true),
                     const SizedBox(height: 24),
-                    if (_socialAvailable) ...[
+                    if (_socialAvailable && !_linking) ...[
                       OutlinedButton(
-                        onPressed:
-                            _busy ? null : () => _submitSocial(apple: false),
+                        onPressed: _busy
+                            ? null
+                            : () => _submitSocial(apple: false),
                         child: Text(tr(context, 'googleSignIn')),
                       ),
                       FilledButton.icon(
-                        onPressed:
-                            _busy ? null : () => _submitSocial(apple: true),
+                        onPressed: _busy
+                            ? null
+                            : () => _submitSocial(apple: true),
                         icon: const Icon(Icons.apple),
                         label: Text(tr(context, 'appleSignIn')),
                       ),
                       TextButton(
-                        onPressed:
-                            _busy
-                                ? null
-                                : () => setState(() {
-                                  _showPhone = !_showPhone;
-                                  _error = null;
-                                }),
-                        child: Text(tr(context, 'phoneAccount')),
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _showPhone = !_showPhone;
+                                if (_linking) _signUp = false;
+                                _error = null;
+                              }),
+                        child: Text(
+                          tr(
+                            context,
+                            (_socialOnly || nativeSocialLoginAvailable)
+                                ? 'linkExistingAccount'
+                                : 'phoneAccount',
+                          ),
+                        ),
                       ),
                       if (_busy && !_showPhone) const LinearProgressIndicator(),
                     ],
                     if (!_socialAvailable || _showPhone) ...[
+                      if (_linking) ...[
+                        Text(tr(context, 'linkExistingAccountHelp')),
+                        const SizedBox(height: 16),
+                      ],
                       if (_signUp) ...[
                         TextFormField(
                           key: const ValueKey('signup-name'),
@@ -164,13 +201,12 @@ class _AuthScreenState extends State<AuthScreen> {
                             helperText: tr(context, 'nameHint'),
                             prefixIcon: const Icon(Icons.person_outline),
                           ),
-                          validator:
-                              (v) =>
-                                  v == null ||
-                                          v.trim().isEmpty ||
-                                          v.trim().length > 40
-                                      ? tr(context, 'nameRequired')
-                                      : null,
+                          validator: (v) =>
+                              v == null ||
+                                  v.trim().isEmpty ||
+                                  v.trim().length > 40
+                              ? tr(context, 'nameRequired')
+                              : null,
                         ),
                         const SizedBox(height: 12),
                       ],
@@ -215,8 +251,8 @@ class _AuthScreenState extends State<AuthScreen> {
                               context,
                               _obscure ? 'showPassword' : 'hidePassword',
                             ),
-                            onPressed:
-                                () => setState(() => _obscure = !_obscure),
+                            onPressed: () =>
+                                setState(() => _obscure = !_obscure),
                             icon: Icon(
                               _obscure
                                   ? Icons.visibility_outlined
@@ -224,17 +260,18 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                           ),
                         ),
-                        validator:
-                            (v) =>
-                                v == null || v.isEmpty
-                                    ? tr(context, 'passwordRequired')
-                                    : (_signUp && v.length < 6
-                                        ? tr(context, 'passwordShort')
-                                        : null),
+                        validator: (v) => v == null || v.isEmpty
+                            ? tr(context, 'passwordRequired')
+                            : (_signUp && v.length < 6
+                                  ? tr(context, 'passwordShort')
+                                  : null),
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        tr(context, 'phoneNotice'),
+                        tr(
+                          context,
+                          _linking ? 'linkPrivacyNotice' : 'phoneNotice',
+                        ),
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],
@@ -248,33 +285,55 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                         ),
                       ),
-                    if (!_socialAvailable || _showPhone) ...[
+                    if (_linking) ...[
+                      const SizedBox(height: 16),
+                      OutlinedButton(
+                        onPressed: _busy
+                            ? null
+                            : () => _submitSocial(apple: false),
+                        child: Text(tr(context, 'linkGoogle')),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _busy
+                            ? null
+                            : () => _submitSocial(apple: true),
+                        icon: const Icon(Icons.apple),
+                        label: Text(tr(context, 'linkApple')),
+                      ),
+                      TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _showPhone = false;
+                                _password.clear();
+                                _error = null;
+                              }),
+                        child: Text(tr(context, 'cancel')),
+                      ),
+                      if (_busy) const LinearProgressIndicator(),
+                    ] else if (!_socialAvailable || _showPhone) ...[
                       const SizedBox(height: 24),
                       FilledButton(
                         key: const ValueKey('auth-submit'),
                         onPressed: _busy ? null : _submit,
-                        child:
-                            _busy
-                                ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                                : Text(
-                                  tr(context, _signUp ? 'signUp' : 'signIn'),
+                        child: _busy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
                                 ),
+                              )
+                            : Text(tr(context, _signUp ? 'signUp' : 'signIn')),
                       ),
                       TextButton(
-                        onPressed:
-                            _busy
-                                ? null
-                                : () => setState(() {
-                                  _signUp = !_signUp;
-                                  _error = null;
-                                  _form.currentState!.reset();
-                                }),
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                _signUp = !_signUp;
+                                _error = null;
+                                _form.currentState!.reset();
+                              }),
                         child: Text(
                           tr(
                             context,

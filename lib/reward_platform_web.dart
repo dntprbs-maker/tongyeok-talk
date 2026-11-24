@@ -4,6 +4,8 @@ import 'dart:js_interop';
 external JSBoolean? get _supported;
 @JS('tongyeokNativeRewardTestMode')
 external JSBoolean? get _testMode;
+@JS('tongyeokNativeRewardPlatform')
+external JSString? get _platform;
 @JS('tongyeokRewardPrepare')
 external JSPromise<JSString> _prepare(JSString uid);
 @JS('tongyeokRewardShow')
@@ -22,11 +24,11 @@ external void _removeListener(JSString name, JSFunction listener);
 
 bool get supported => _supported?.toDart == true;
 bool get testMode => _testMode?.toDart ?? true;
+String get platform => _platform?.toDart == 'android' ? 'android' : 'ios';
 void Function() listenAvailability(void Function() callback) {
-  final listener =
-      ((JSAny? event) {
-        callback();
-      }).toJS;
+  final listener = ((JSAny? event) {
+    callback();
+  }).toJS;
   final name = 'tongyeok-native-reward-ready'.toJS;
   _addListener(name, listener);
   return () => _removeListener(name, listener);
@@ -45,14 +47,12 @@ Future<bool> show(
   bool testAds,
 ) async {
   if (!supported) throw StateError('adUnavailable');
-  final result =
-      (await _show(
-            uid.toJS,
-            sessionId.toJS,
-            adUnitId.toJS,
-            testAds.toJS,
-          ).toDart)
-          .toDart;
+  final result = (await _show(
+    uid.toJS,
+    sessionId.toJS,
+    adUnitId.toJS,
+    testAds.toJS,
+  ).toDart).toDart;
   if (result != 'earned' && result != 'dismissed') {
     throw StateError('adLoadFailed');
   }
