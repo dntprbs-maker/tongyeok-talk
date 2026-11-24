@@ -4,6 +4,14 @@ import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 
 const bundleIdentifier='com.tongyeoktalk';
+export function selectIosBundle(bundles) {
+  const matches=bundles.filter(({attributes})=>
+    attributes?.identifier===bundleIdentifier &&
+    ['IOS','UNIVERSAL'].includes(attributes.platform)
+  );
+  if(matches.length!==1)throw Error('ios_app_bundle_not_unique');
+  return matches[0];
+}
 export function signingCertificates(certificates, existingContents) {
   const existing=new Set(existingContents.map(x=>x.replace(/\s/g,'')));
   const matches=certificates.filter(x=>existing.has((x.attributes.certificateContent??'').replace(/\s/g,'')));
@@ -30,9 +38,8 @@ async function main() {
     if(!r.ok)throw Error(`apple_profile_request_${r.status}`);
     return (await r.json()).data;
   }
-  const bundles=await apple('/v1/bundleIds',{'filter[identifier]':bundleIdentifier});
-  if(bundles.length!==1)throw Error('bundle_not_unique');
-  const bundle=bundles[0];
+  const bundles=await apple('/v1/bundleIds',{'filter[identifier]':bundleIdentifier,'filter[platform]':'IOS,UNIVERSAL'});
+  const bundle=selectIosBundle(bundles);
   assertPushBundle(bundle,await apple(`/v1/bundleIds/${bundle.id}/bundleIdCapabilities`));
   const encoded=JSON.parse(execFileSync('python3',['-c',"import sys,plistlib,base64,json; p=plistlib.load(open(sys.argv[1],'rb')); print(json.dumps([base64.b64encode(x).decode() for x in p['DeveloperCertificates']]))",e.IOS_EXISTING_PROFILE_PLIST],{encoding:'utf8'}));
   const certs=signingCertificates(await apple('/v1/certificates',{limit:'200'}),encoded);

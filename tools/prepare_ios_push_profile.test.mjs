@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertPushBundle,signingCertificates} from './prepare_ios_push_profile.mjs';
+import {assertPushBundle,selectIosBundle,signingCertificates} from './prepare_ios_push_profile.mjs';
+test('selects the exact iPhone app identifier among related registrations',()=>{
+  const entry=(id,identifier,platform)=>({id,attributes:{identifier,platform}});
+  const ios=entry('app','com.tongyeoktalk','IOS');
+  const universal=entry('universal','com.tongyeoktalk','UNIVERSAL');
+  const other=[entry('service','com.tongyeoktalk.signin','IOS'),entry('mac','com.tongyeoktalk','MAC_OS')];
+  assert.equal(selectIosBundle([...other,ios]),ios);
+  assert.equal(selectIosBundle([...other,universal]),universal);
+  assert.throws(()=>selectIosBundle(other));
+  assert.throws(()=>selectIosBundle([ios,universal]));
+});
 test('only the existing signing certificate is reused',()=>{
   const all=[{id:'other',attributes:{certificateContent:'OTHER'}},{id:'ours',attributes:{certificateContent:'OUR\nCERT'}}];
   assert.deepEqual(signingCertificates(all,['OURCERT']),[{type:'certificates',id:'ours'}]);
