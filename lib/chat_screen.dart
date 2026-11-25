@@ -580,16 +580,14 @@ class ChatScreenState extends State<ChatScreen>
             ),
           ),
           IconButton(
-            tooltip: tr(context, 'preview'),
+            tooltip: tr(context, 'chatDeliveryInfo'),
             icon: const Icon(Icons.info_outline, size: 21),
             onPressed:
                 () => showDialog<void>(
                   context: context,
                   builder:
                       (context) => AlertDialog(
-                        content: Text(
-                          '${tr(context, 'preview')}\n\n${tr(context, 'chatDeliveryNotice')}',
-                        ),
+                        content: Text(tr(context, 'chatDeliveryNotice')),
                       ),
                 ),
           ),

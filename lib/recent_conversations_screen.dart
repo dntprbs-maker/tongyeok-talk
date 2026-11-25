@@ -16,6 +16,7 @@ import 'reward_ads_screen.dart';
 import 'reward_platform.dart' as reward_platform;
 import 'guest_rooms_list.dart';
 import 'qa_account_switcher.dart';
+import 'brand.dart';
 
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
@@ -153,10 +154,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
     appBar: AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
-      title: Text(
-        tr(context, 'chats'),
-        style: const TextStyle(fontWeight: FontWeight.w800),
-      ),
+      title: const BrandBarTitle(),
       actions: [
         IconButton(
           tooltip: tr(context, 'findPeople'),

@@ -98,35 +98,6 @@ class MyApp extends StatelessWidget {
                 '/pastChats': (_) => const Scaffold(body: PastChats()),
                 '/settings': (_) => const SettingsScreen(),
               },
-              builder:
-                  (context, child) => Column(
-                    children: [
-                      Material(
-                        color: const Color(0xFFF0F2FC),
-                        child: SafeArea(
-                          bottom: false,
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 7,
-                              ),
-                              child: Text(
-                                tr(context, 'preview'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF414967),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(child: child ?? const SizedBox()),
-                    ],
-                  ),
               theme: ThemeData(
                 useMaterial3: true,
                 colorScheme: ColorScheme.fromSeed(seedColor: brandColor),
