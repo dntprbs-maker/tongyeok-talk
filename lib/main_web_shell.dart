@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
+import 'app_build_number.dart';
 import 'native_push_bridge_device.dart';
 import 'native_push_bridge_protocol.dart';
 import 'native_push_bridge_script.dart';
@@ -38,7 +39,6 @@ class TongyeokWebShell extends StatefulWidget {
 }
 
 class _TongyeokWebShellState extends State<TongyeokWebShell> {
-  static const _buildNumber = String.fromEnvironment('TONGYEOK_BUILD_NUMBER');
   // Keep disabled until the Apple push profile/key and device tests are ready.
   static const _nativePushEnabled = bool.fromEnvironment(
     'TONGYEOK_IOS_NATIVE_PUSH',
@@ -287,7 +287,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     try {
       // Revalidate the web entry, keeping the session and versioned assets.
       await _controller.loadRequest(
-        _entry,
+        withAppBuildNumber(_entry),
         headers: const {'Cache-Control': 'no-cache'},
       );
     } catch (_) {
@@ -319,60 +319,37 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     final mongolian = Localizations.localeOf(context).languageCode == 'mn';
     final shell = Scaffold(
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            if (_buildNumber.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 4,
-                  horizontal: 16,
-                ),
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Text(
-                    mongolian ? 'Хувилбар $_buildNumber' : '빌드 $_buildNumber',
-                    style: Theme.of(context).textTheme.labelSmall,
+            WebViewWidget(controller: _controller),
+            if (_loading) const Center(child: CircularProgressIndicator()),
+            if (_failed)
+              ColoredBox(
+                color: Theme.of(context).scaffoldBackgroundColor,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        mongolian
+                            ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.'
+                            : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.',
+                      ),
+                      TextButton(
+                        onPressed: _openPublishedApp,
+                        child: Text(mongolian ? 'Дахин оролдох' : '다시 시도'),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            Expanded(
-              child: Stack(
-                children: [
-                  WebViewWidget(controller: _controller),
-                  if (_loading)
-                    const Center(child: CircularProgressIndicator()),
-                  if (_failed)
-                    ColoredBox(
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              mongolian
-                                  ? 'Хуудсыг нээж чадсангүй. Интернэтээ шалгана уу.'
-                                  : '화면을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.',
-                            ),
-                            TextButton(
-                              onPressed: _openPublishedApp,
-                              child: Text(
-                                mongolian ? 'Дахин оролдох' : '다시 시도',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (iosAdProbeEnabled &&
-                      !kIsWeb &&
-                      defaultTargetPlatform == TargetPlatform.iOS)
-                    const Align(
-                      alignment: Alignment.bottomCenter,
-                      child: IosRewardAdProbe(),
-                    ),
-                ],
+            if (iosAdProbeEnabled &&
+                !kIsWeb &&
+                defaultTargetPlatform == TargetPlatform.iOS)
+              const Align(
+                alignment: Alignment.bottomCenter,
+                child: IosRewardAdProbe(),
               ),
-            ),
           ],
         ),
       ),

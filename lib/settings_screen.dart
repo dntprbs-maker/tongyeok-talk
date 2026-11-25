@@ -10,6 +10,7 @@ import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
 import 'account_deletion_screen.dart';
 import 'session_sign_out.dart';
+import 'app_build_number.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool showNotifications;
@@ -20,6 +21,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
+  final _appBuildNumber = appBuildNumber(Uri.base);
   final _pushChanges = ValueNotifier<int>(0);
   late final _profile =
       FirebaseFirestore.instance
@@ -351,6 +353,15 @@ class _SettingsScreenState extends State<SettingsScreen>
               Text(
                 tr(context, _error!),
                 style: const TextStyle(color: Colors.red),
+              ),
+            if (_appBuildNumber case final String number)
+              Padding(
+                padding: const EdgeInsets.only(top: 24),
+                child: Text(
+                  tr(context, 'appBuild', {'number': number}),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
               ),
           ],
         ),
