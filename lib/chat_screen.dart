@@ -13,6 +13,7 @@ import 'message_history.dart';
 import 'safety_controls.dart';
 import 'local_archive.dart';
 import 'reward_ads_screen.dart';
+import 'contact_aliases.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -33,6 +34,9 @@ class ChatScreenState extends State<ChatScreen>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final User _currentUser = FirebaseAuth.instance.currentUser!;
+  late final _aliases = ContactAliases(_currentUser.uid);
+  Stream<String?>? _aliasStream;
+  String? _peerUid, _peerOriginalName;
 
   List<Map<String, dynamic>> _msgList = [];
   bool _isInitialLoad = true;
@@ -294,6 +298,16 @@ class ChatScreenState extends State<ChatScreen>
         (uid) => FirebaseFirestore.instance.collection('users').doc(uid).get(),
       ),
     );
+    final peer = directChatPeer(data, _currentUser.uid);
+    if (peer != null) {
+      final profile = profiles.firstWhere((profile) => profile.id == peer).data();
+      if (profile != null && profile['deleted'] != true) {
+        _peerUid = peer;
+        _peerOriginalName =
+            profile['displayName'] as String? ?? profile['username'] as String?;
+        _aliasStream = _aliases.watch(peer);
+      }
+    }
     final languages = <String>{};
     for (final profile in profiles) {
       final value = profile.data();
@@ -573,11 +587,7 @@ class ChatScreenState extends State<ChatScreen>
             onPressed: () => Navigator.pop(context),
           ),
           Expanded(
-            child: Text(
-              widget.otherUserName,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: _buildPeerTitle(),
           ),
           IconButton(
             tooltip: tr(context, 'chatDeliveryInfo'),
@@ -621,6 +631,42 @@ class ChatScreenState extends State<ChatScreen>
                 );
               },
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPeerTitle() {
+    final peer = _peerUid;
+    final original = _peerOriginalName ?? widget.otherUserName;
+    Widget name(String value) => Text(
+      value,
+      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+    );
+    if (peer == null) return name(original);
+    return StreamBuilder<String?>(
+      stream: _aliasStream,
+      builder: (context, snapshot) => Row(
+        children: [
+          Expanded(child: name(snapshot.data ?? original)),
+          IconButton(
+            tooltip: tr(context, 'contactAliasEdit'),
+            icon: const Icon(Icons.edit_outlined, size: 19),
+            onPressed: snapshot.connectionState == ConnectionState.waiting ||
+                    snapshot.hasError
+                ? null
+                : () => showDialog<void>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => ContactAliasDialog(
+                    original: original,
+                    alias: snapshot.data,
+                    onSave: (alias) => _aliases.update(peer, alias),
+                  ),
+                ),
+          ),
         ],
       ),
     );

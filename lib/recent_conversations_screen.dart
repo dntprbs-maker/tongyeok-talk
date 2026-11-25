@@ -18,6 +18,7 @@ import 'reward_platform.dart' as reward_platform;
 import 'guest_rooms_list.dart';
 import 'qa_account_switcher.dart';
 import 'brand.dart';
+import 'contact_aliases.dart';
 
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
@@ -31,10 +32,20 @@ class RecentConversationsScreen extends StatefulWidget {
 
 class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   final currentUser = FirebaseAuth.instance.currentUser!;
+  StreamSubscription<Map<String, String>>? _aliasSubscription;
+  Map<String, String> _aliases = const {};
 
   @override
   void initState() {
     super.initState();
+    _aliasSubscription = ContactAliases(currentUser.uid).watchAll().listen(
+      (aliases) {
+        if (mounted) setState(() => _aliases = aliases);
+      },
+      onError: (Object error) {
+        if (mounted && _aliases.isNotEmpty) setState(() => _aliases = const {});
+      },
+    );
     _stopRewardListener = reward_platform.listenAvailability(() {
       if (mounted) setState(() {});
     });
@@ -48,6 +59,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   late final void Function() _stopRewardListener;
   @override
   void dispose() {
+    _aliasSubscription?.cancel();
     _stopRewardListener();
     super.dispose();
   }
@@ -293,8 +305,10 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                             () => _displayName(data),
                           ),
                           builder: (context, name) {
-                            final label =
+                            final original =
                                 name.data ?? tr(context, 'unknownUser');
+                            final peer = directChatPeer(data, currentUser.uid);
+                            final label = _aliases[peer] ?? original;
                             return Container(
                               decoration: const BoxDecoration(
                                 border: Border(
@@ -355,7 +369,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                                         builder:
                                             (_) => ChatScreen(
                                               conversationId: room.id,
-                                              otherUserName: label,
+                                              otherUserName: original,
                                             ),
                                       ),
                                     ),
