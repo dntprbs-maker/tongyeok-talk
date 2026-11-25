@@ -8,6 +8,7 @@ import 'app_language.dart';
 import 'ui_errors.dart';
 import 'read_receipts.dart';
 import 'notification_prompt.dart';
+import 'notice_bell.dart';
 import 'query_audit.dart';
 import 'settings_screen.dart';
 import 'translation_wallet.dart';
@@ -42,7 +43,6 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
     });
   }
 
-  final _prompt = GlobalKey<NotificationPromptState>();
   final _names = <String, Future<Map<String, dynamic>?>>{};
   final _roomNames = <String, Future<String>>{};
   late final void Function() _stopRewardListener;
@@ -118,7 +118,6 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
           .snapshots();
   Future<void> _open(String route) async {
     await Navigator.pushNamed(context, route);
-    _prompt.currentState?.refresh();
   }
 
   Future<String> _displayName(Map<String, dynamic> data) async {
@@ -179,18 +178,27 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                 icon: const Icon(Icons.history),
                 onPressed: () => _open('/pastChats'),
               ),
-              NotificationPrompt(
-                key: _prompt,
-                iconOnly: true,
-                onOpenSettings: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => const IncomingNoticesScreen(),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: _rooms,
+                builder:
+                    (context, snapshot) => ConversationNoticeBell(
+                      uid: currentUser.uid,
+                      revisions: {
+                        for (final room
+                            in snapshot.data?.docs ??
+                                const <
+                                  QueryDocumentSnapshot<Map<String, dynamic>>
+                                >[])
+                          room.id: room.data()['timestamp'] as Timestamp?,
+                      },
+                      onOpen:
+                          () => Navigator.push<void>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const IncomingNoticesScreen(),
+                            ),
+                          ),
                     ),
-                  );
-                  _prompt.currentState?.refresh();
-                },
               ),
               IconButton(
                 tooltip: tr(context, 'settings'),
@@ -492,10 +500,19 @@ class _IncomingNoticesScreenState extends State<IncomingNoticesScreen> {
     }
     auditQuery('incoming_notice_query');
     final result = await query.get();
-    final docs =
+    var docs =
         result.docs
             .where((d) => (d.data()['senderId'] as String?) != currentUser.uid)
             .toList();
+    if (docs.isEmpty && result.size == 30) {
+      final older =
+          await ReadReceipts.unreadMessages(
+            roomId,
+            currentUser.uid,
+            through,
+          ).limit(1).get();
+      docs = older.docs;
+    }
     if (docs.isEmpty) return null;
     final message = docs.first.data();
     final senderId = message['senderId'] as String?;
@@ -588,64 +605,77 @@ class _IncomingNoticesScreenState extends State<IncomingNoticesScreen> {
         ),
       ],
     ),
-    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _rooms,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(tr(context, errorKey(snapshot.error!))),
-          );
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) return _empty(context);
-        final signature = docs
-            .map(
-              (d) =>
-                  '${d.id}@${(d.data()['timestamp'] as Timestamp?)?.millisecondsSinceEpoch ?? 0}',
-            )
-            .join('|');
-        if (signature != _combinedKey) {
-          _combinedKey = signature;
-          _combined = Future.wait(<Future<_IncomingNotice?>>[
-            for (final room in docs)
-              _notice(
-                room.id,
-                room.data(),
-                room.data()['timestamp'] as Timestamp?,
-              ),
-          ]);
-        }
-        return FutureBuilder<List<_IncomingNotice?>>(
-          future: _combined,
-          builder: (context, all) {
-            if (all.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (all.hasError) {
-              return Center(
-                child: Padding(
+    body: Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: NotificationPrompt(canDismiss: false),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _rooms,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text(tr(context, errorKey(all.error!))),
-                ),
+                  child: Text(tr(context, errorKey(snapshot.error!))),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) return _empty(context);
+              final signature = docs
+                  .map(
+                    (d) =>
+                        '${d.id}@${(d.data()['timestamp'] as Timestamp?)?.millisecondsSinceEpoch ?? 0}',
+                  )
+                  .join('|');
+              if (signature != _combinedKey) {
+                _combinedKey = signature;
+                _combined = Future.wait(<Future<_IncomingNotice?>>[
+                  for (final room in docs)
+                    _notice(
+                      room.id,
+                      room.data(),
+                      room.data()['timestamp'] as Timestamp?,
+                    ),
+                ]);
+              }
+              return FutureBuilder<List<_IncomingNotice?>>(
+                future: _combined,
+                builder: (context, all) {
+                  if (all.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (all.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(tr(context, errorKey(all.error!))),
+                      ),
+                    );
+                  }
+                  final notices = all.data ?? const <_IncomingNotice?>[];
+                  final rows = <Widget>[
+                    for (var i = 0; i < docs.length && i < notices.length; i++)
+                      if (notices[i] != null) _noticeTile(docs[i], notices[i]!),
+                  ];
+                  if (rows.isEmpty) return Center(child: _empty(context));
+                  return ListView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    children: rows,
+                  );
+                },
               );
-            }
-            final notices = all.data ?? const <_IncomingNotice?>[];
-            final rows = <Widget>[
-              for (var i = 0; i < docs.length && i < notices.length; i++)
-                if (notices[i] != null) _noticeTile(docs[i], notices[i]!),
-            ];
-            if (rows.isEmpty) return Center(child: _empty(context));
-            return ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              children: rows,
-            );
-          },
-        );
-      },
+            },
+          ),
+        ),
+      ],
     ),
   );
 }
