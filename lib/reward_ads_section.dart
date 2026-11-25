@@ -7,7 +7,9 @@ import 'reward_ad_service.dart';
 import 'reward_platform.dart' as reward_platform;
 
 bool isRewardLeader(Map<String, dynamic>? profile) =>
-    profile?['rewardQaRole'] != 'member' && AppLanguage.instance.code != 'mn';
+    profile?['rewardQaRole'] != 'member' &&
+    (profile?['preferredLanguage'] ?? AppLanguage.instance.profileLanguage) ==
+        'Korean';
 
 DateTime? lastPassMinute(DateTime? expiration) => expiration
     ?.toUtc()
@@ -46,14 +48,16 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
   bool _busy = false;
   String? _message;
   String? _session;
-  Future<void> _watch() async {
+  Future<void> _watch(Map<String, dynamic>? profile) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
-      if (!rewardPlaybackTest) {
+      // Firestore only permits setting the language once, for older profiles.
+      if (!rewardPlaybackTest &&
+          profile?.containsKey('preferredLanguage') != true) {
         await FirebaseFirestore.instance.doc('users/${_user.uid}').update({
           'preferredLanguage': AppLanguage.instance.profileLanguage,
         });
@@ -134,7 +138,7 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
                               ? 'adLeaderHalfway'
                               : 'adGranted')
                           : _message,
-                  onWatch: _watch,
+                  onWatch: () => _watch(value),
                   onPrivacy: () async {
                     try {
                       await RewardAdService.privacyOptions();
