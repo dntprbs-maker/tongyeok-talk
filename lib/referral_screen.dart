@@ -109,25 +109,28 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
               Align(
                 alignment: Alignment.centerRight,
                 child: IconButton(
-                  tooltip: mn ? 'Хаах' : '닫기',
+                  tooltip: tr(dialog, 'chatCreditClose'),
                   onPressed: () => Navigator.pop(dialog),
                   icon: const Icon(Icons.close),
                 ),
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  child: Image.asset(
-                    'assets/images/referral-announcement.png',
-                    fit: BoxFit.contain,
-                    semanticLabel: referralRules(dialog),
-                  ),
+                  child:
+                      mn
+                          ? const _LocalizedReferralAnnouncement()
+                          : Image.asset(
+                            'assets/images/referral-announcement.png',
+                            fit: BoxFit.contain,
+                            semanticLabel: referralRules(dialog),
+                          ),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: FilledButton(
                   onPressed: () => Navigator.pop(dialog, true),
-                  child: Text(mn ? 'Мессежээр урих' : '문자로 초대하기'),
+                  child: Text(tr(dialog, 'referralSmsInvite')),
                 ),
               ),
             ],
@@ -141,6 +144,77 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
       context,
     ).push<void>(MaterialPageRoute(builder: (_) => const ReferralScreen()));
   }
+}
+
+class _LocalizedReferralAnnouncement extends StatelessWidget {
+  const _LocalizedReferralAnnouncement();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF5632A7), Color(0xFF39218B)],
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          tr(context, 'app'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          tr(context, 'referralAnnouncementTitle'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 16),
+        for (final (role, reward) in [
+          ('referralKoreanUser', 'referralKoreanReward'),
+          ('referralMongolianUser', 'referralMongolianReward'),
+        ])
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tr(context, role)),
+                Text(
+                  tr(context, reward),
+                  style: const TextStyle(
+                    color: Color(0xFF39218B),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 6),
+        Text(
+          tr(context, 'referralRewardConditions'),
+          style: const TextStyle(color: Colors.white, height: 1.4),
+        ),
+      ],
+    ),
+  );
 }
 
 class ReferralScreen extends StatefulWidget {
