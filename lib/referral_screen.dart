@@ -63,8 +63,7 @@ Future<Map<String, dynamic>> referralRequest(
   return result;
 }
 
-String referralLabel(BuildContext context) =>
-    LanguageScope.of(context).code == 'mn' ? 'Урилгын урамшуулал' : '추천 보상';
+String referralLabel(BuildContext context) => tr(context, 'friendInvite');
 
 String referralRegistrationError(BuildContext context, String error) {
   final mn = LanguageScope.of(context).code == 'mn';
@@ -83,8 +82,8 @@ String referralRegistrationError(BuildContext context, String error) {
 
 String referralRules(BuildContext context) =>
     LanguageScope.of(context).code == 'mn'
-    ? 'Урилгаар бүртгүүлсэн хүн 30 хоногийн дараа, 10 өөр өдөр зурвас илгээсэн бол түүнийг урьсан гишүүнд урамшуулал автоматаар олгоно. Багийн ахлагчид 5 хоног, багийн гишүүнд 500 өгүүлбэрийн орчуулгын эрх олгоно.'
-    : '소개받은 사람이 가입 후 30일이 지나고 서로 다른 10일에 메시지를 보내면, 소개한 팀장에게 이용권 5일, 소개한 팀원에게 번역권 500문장을 자동 지급해요.';
+        ? 'Урилгаар бүртгүүлсэн хүн 30 хоногийн дараа, 10 өөр өдөр зурвас илгээсэн бол түүнийг урьсан гишүүнд урамшуулал автоматаар олгоно. Багийн ахлагчид 5 хоног, багийн гишүүнд 500 өгүүлбэрийн орчуулгын эрх олгоно.'
+        : '소개받은 사람이 가입 후 30일이 지나고 서로 다른 10일에 메시지를 보내면, 소개한 팀장에게 이용권 5일, 소개한 팀원에게 번역권 500문장을 자동 지급해요.';
 
 final _shownReferralAnnouncements = <String>{};
 
@@ -138,8 +137,9 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
     },
   );
   if (details == true && context.mounted) {
-    await Navigator.of(context)
-        .push<void>(MaterialPageRoute(builder: (_) => const ReferralScreen()));
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const ReferralScreen()));
   }
 }
 
@@ -172,8 +172,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
       return;
     }
 
-    final link = Uri.parse(_referralEndpoint)
-        .replace(path: '/rewardApi/invite', queryParameters: {'ref': code});
+    final link = Uri.parse(
+      _referralEndpoint,
+    ).replace(path: '/rewardApi/invite', queryParameters: {'ref': code});
     setState(() => _sending = true);
     try {
       await const MethodChannel('tongyeok/invite').invokeMethod<void>(
@@ -214,8 +215,8 @@ class _ReferralScreenState extends State<ReferralScreen> {
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return OutlinedButton(
-                  onPressed: () =>
-                      setState(() => _status = referralRequest('status')),
+                  onPressed:
+                      () => setState(() => _status = referralRequest('status')),
                   child: Text(mn ? 'Дахин оролдох' : '다시 시도'),
                 );
               }
@@ -230,18 +231,18 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     keyboardType: TextInputType.phone,
                     maxLength: 18,
                     decoration: InputDecoration(
-                      labelText: mn
-                          ? 'Урих хүний утасны дугаар'
-                          : '초대할 사람의 전화번호',
+                      labelText:
+                          mn ? 'Урих хүний утасны дугаар' : '초대할 사람의 전화번호',
                       hintText: '010-1234-5678',
                       counterText: '',
                     ),
                   ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
-                    onPressed: _sending
-                        ? null
-                        : () => _composeSms(mn, data['code'] as String),
+                    onPressed:
+                        _sending
+                            ? null
+                            : () => _composeSms(mn, data['code'] as String),
                     icon: const Icon(Icons.sms_outlined),
                     label: Text(mn ? 'Мессежийн апп нээх' : '문자 앱 열기'),
                   ),

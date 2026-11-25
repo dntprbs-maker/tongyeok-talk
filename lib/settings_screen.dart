@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'referral_screen.dart';
+import 'app_language.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'app_language.dart';
 import 'ui_errors.dart';
 import 'push_service.dart';
 import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
-import 'translation_wallet.dart';
 import 'account_deletion_screen.dart';
 import 'session_sign_out.dart';
 
@@ -105,28 +104,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  Future<void> _save() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(FirebaseAuth.instance.currentUser!.uid)
-          .update({'preferredLanguage': AppLanguage.instance.profileLanguage});
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(tr(context, 'saved'))));
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = errorKey(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   Future<void> _signOut() async {
     if (_busy) return;
     setState(() => _busy = true);
@@ -165,17 +142,13 @@ class _SettingsScreenState extends State<SettingsScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ListTile(
-                  leading: const Icon(Icons.card_giftcard_outlined),
-                  title: Text(referralLabel(context)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap:
-                      () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => const ReferralScreen(),
-                        ),
-                      ),
-                ),
+                if (_error != null) ...[
+                  Text(
+                    tr(context, _error!),
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Text(
                   tr(context, 'account'),
                   style: Theme.of(context).textTheme.titleMedium,
@@ -192,6 +165,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                         data?['displayName'] as String? ??
                         data?['username'] as String? ??
                         '';
+                    final preferredLanguage =
+                        data?['preferredLanguage'] as String?;
+                    final languageLabel =
+                        !snap.hasData
+                            ? ''
+                            : preferredLanguage == 'Mongolian'
+                            ? tr(context, 'mn')
+                            : preferredLanguage == 'Korean'
+                            ? tr(context, 'ko')
+                            : '';
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: CircleAvatar(
@@ -201,6 +184,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                       title: Text(
                         name,
                         style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${tr(context, 'signupLanguage')}: $languageLabel\n${tr(context, 'signupLanguageHelp')}',
                       ),
                     );
                   },
@@ -231,33 +217,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                   },
                 ),
                 const Divider(height: 32),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF5FF),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const TranslationWallet(),
+                ListTile(
+                  leading: const Icon(Icons.card_giftcard_outlined),
+                  title: Text(referralLabel(context)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap:
+                      () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => const ReferralScreen(),
+                        ),
+                      ),
                 ),
-                const Divider(height: 24),
-                Text(
-                  tr(context, 'language'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                const LanguagePicker(),
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: _busy ? null : _save,
-                  child: Text(tr(context, 'saveLanguage')),
-                ),
-                if (_error != null)
-                  Text(
-                    tr(context, _error!),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
                 const Divider(height: 32),
                 Text(
                   tr(context, 'messageDisplay'),

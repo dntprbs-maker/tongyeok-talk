@@ -11,6 +11,8 @@ import 'ui_errors.dart';
 import 'read_receipts.dart';
 import 'message_history.dart';
 import 'safety_controls.dart';
+import 'local_archive.dart';
+import 'reward_ads_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -45,6 +47,20 @@ class ChatScreenState extends State<ChatScreen>
   ModalRoute<void>? _route;
   late final MessageHistory _history;
   String? _newestShown;
+  String? _archiveRevision;
+  bool _archiveSaving = false;
+  String? _queuedArchiveRevision;
+  List<Map<String, dynamic>>? _queuedArchiveRows;
+  final Map<String, String> _creditTranslations = {};
+  static const int _lowCreditThreshold = 10;
+  bool _creditGate = false;
+  bool _lowCreditShown = false;
+  bool _emptyCreditShown = false;
+  bool _creditDialogOpen = false;
+  bool _creditCheckQueued = false;
+  num? _spendable;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _walletSubscription;
 
   @override
   void didChangeDependencies() {
@@ -58,7 +74,10 @@ class ChatScreenState extends State<ChatScreen>
   }
 
   @override
-  void didPopNext() => _markVisibleRead();
+  void didPopNext() {
+    _markVisibleRead();
+    _recheckCreditGate();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -118,6 +137,123 @@ class ChatScreenState extends State<ChatScreen>
         setState(() => _isInitialLoad = false);
       }
     });
+    _loadCreditGate().catchError((_) {});
+  }
+
+  Future<void> _loadCreditGate() async {
+    final profile =
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUser.uid)
+            .get();
+    final data = profile.data();
+    if (data == null ||
+        data['preferredLanguage'] != 'Mongolian' ||
+        data['rewardAdEnabled'] != true ||
+        !mounted) {
+      return;
+    }
+    setState(() => _creditGate = true);
+    _walletSubscription = FirebaseFirestore.instance
+        .collection('translationWallets')
+        .doc(_currentUser.uid)
+        .snapshots()
+        .listen(_onWalletSnapshot, onError: (_) {});
+  }
+
+  void _onWalletSnapshot(DocumentSnapshot<Map<String, dynamic>> snapshot) {
+    if (!mounted || !_creditGate) return;
+    final data = snapshot.data();
+    final spendable =
+        ((data?['balance'] as num? ?? 0) - (data?['reserved'] as num? ?? 0));
+    setState(() => _spendable = spendable);
+    if (spendable > 0) _emptyCreditShown = false;
+    if (spendable > _lowCreditThreshold) _lowCreditShown = false;
+    if (_creditDialogOpen || _route?.isCurrent != true) {
+      _creditCheckQueued = true;
+      return;
+    }
+    _evaluateCreditGate();
+  }
+
+  void _evaluateCreditGate() {
+    if (!mounted || _creditDialogOpen || _route?.isCurrent != true) return;
+    final spendable = _spendable;
+    if (spendable == null) return;
+    if (spendable <= 0) {
+      if (!_emptyCreditShown) _showCreditDialog(depleted: true);
+    } else if (spendable <= _lowCreditThreshold && !_lowCreditShown) {
+      _showCreditDialog(depleted: false);
+    }
+  }
+
+  void _recheckCreditGate() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_creditCheckQueued ||
+          _creditDialogOpen ||
+          _route?.isCurrent != true) {
+        return;
+      }
+      _creditCheckQueued = false;
+      _evaluateCreditGate();
+    });
+  }
+
+  Future<void> _showCreditDialog({required bool depleted}) async {
+    if (!mounted || _creditDialogOpen) return;
+    _creditDialogOpen = true;
+    if (depleted) {
+      _emptyCreditShown = true;
+    } else {
+      _lowCreditShown = true;
+    }
+    try {
+      await showDialog<void>(
+        context: context,
+        builder:
+            (dialogContext) => AlertDialog(
+              title: Text(
+                tr(
+                  dialogContext,
+                  depleted ? 'chatNoCreditTitle' : 'chatLowCreditTitle',
+                ),
+              ),
+              content: Text(
+                depleted
+                    ? tr(dialogContext, 'chatNoCreditBody')
+                    : tr(dialogContext, 'chatLowCreditBody', {
+                      'count': NumberFormat('0.###').format(_spendable ?? 0),
+                    }),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: Text(
+                    tr(
+                      dialogContext,
+                      depleted ? 'chatCreditClose' : 'chatCreditContinue',
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.push<void>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const RewardAdsScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(tr(dialogContext, 'adWatchCredits')),
+                ),
+              ],
+            ),
+      );
+    } finally {
+      _creditDialogOpen = false;
+    }
   }
 
   @override
@@ -125,6 +261,7 @@ class ChatScreenState extends State<ChatScreen>
     WidgetsBinding.instance.removeObserver(this);
     chatRouteObserver.unsubscribe(this);
     _receiptSubscription?.cancel();
+    _walletSubscription?.cancel();
     _history.dispose();
     _scrollController.dispose();
     _messageController.dispose();
@@ -171,6 +308,10 @@ class ChatScreenState extends State<ChatScreen>
     if (_sending) return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
+    if (_creditGate && _spendable != null && _spendable! <= 0) {
+      _showCreditDialog(depleted: true);
+      return;
+    }
     if ((_messageLimit == 50 ? text.runes.length : text.length) >
         _messageLimit) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -332,6 +473,52 @@ class ChatScreenState extends State<ChatScreen>
             });
       }
     });
+  }
+
+  void _queueArchiveSave(String revision, List<Map<String, dynamic>> rows) {
+    if (revision == _archiveRevision && !_archiveSaving) return;
+    if (_archiveSaving) {
+      if (revision != _archiveRevision) {
+        _queuedArchiveRevision = revision;
+        _queuedArchiveRows = rows;
+      }
+      return;
+    }
+    _archiveRevision = revision;
+    _archiveSaving = true;
+    LocalArchive.instance
+        .save(
+          _currentUser.uid,
+          widget.conversationId,
+          widget.otherUserName,
+          false,
+          rows,
+        )
+        .catchError((_) {
+          // Leave the revision marked; retry only on the next changed render.
+        })
+        .whenComplete(() {
+          _archiveSaving = false;
+          final nextRevision = _queuedArchiveRevision;
+          final nextRows = _queuedArchiveRows;
+          _queuedArchiveRevision = null;
+          _queuedArchiveRows = null;
+          if (nextRevision != null && nextRows != null) {
+            _queueArchiveSave(nextRevision, nextRows);
+          }
+        });
+  }
+
+  void _persistCreditTranslation(String id, String text) {
+    if (text.isEmpty || _creditTranslations[id] == text) return;
+    _creditTranslations[id] = text;
+    LocalArchive.instance
+        .translation(_currentUser.uid, widget.conversationId, id, text)
+        .catchError((_) {
+          if (_creditTranslations[id] == text) {
+            _creditTranslations.remove(id);
+          }
+        });
   }
 
   @override
@@ -525,6 +712,29 @@ class ChatScreenState extends State<ChatScreen>
         }
         _newestShown = newestId;
 
+        _queueArchiveSave(
+          _msgList
+              .map(
+                (message) =>
+                    '${message['id']}|${message['translationStatus']}'
+                    '|${message['translatedText']}|${message['sent']}',
+              )
+              .join(';'),
+          _msgList
+              .map(
+                (message) => <String, dynamic>{
+                  'id': message['id'],
+                  'mine': message['senderId'] == _currentUser.uid,
+                  'original': message['originalText'],
+                  'translation': message['translatedText'],
+                  'source': message['sourceLang'],
+                  'status': message['translationStatus'],
+                  'time':
+                      (message['timestamp'] as DateTime).millisecondsSinceEpoch,
+                },
+              )
+              .toList(),
+        );
         return Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
@@ -620,6 +830,11 @@ class ChatScreenState extends State<ChatScreen>
                               .collection('creditTranslations')
                               .doc(_currentUser.uid),
                           builder: buildBubble,
+                          onTranslation:
+                              (translation) => _persistCreditTranslation(
+                                msg['id'] as String,
+                                translation,
+                              ),
                         )
                         : buildBubble(
                           msg['translatedText'] as String,
@@ -748,16 +963,19 @@ class _CreditTranslation extends StatefulWidget {
     super.key,
     required this.access,
     required this.builder,
+    required this.onTranslation,
   });
 
   final DocumentReference<Map<String, dynamic>> access;
   final Widget Function(String translation, String status) builder;
+  final void Function(String translation) onTranslation;
 
   @override
   State<_CreditTranslation> createState() => _CreditTranslationState();
 }
 
 class _CreditTranslationState extends State<_CreditTranslation> {
+  String? _forwardedTranslation;
   late Stream<DocumentSnapshot<Map<String, dynamic>>> _updates =
       widget.access.snapshots();
 
@@ -774,8 +992,13 @@ class _CreditTranslationState extends State<_CreditTranslation> {
     stream: _updates,
     builder: (context, snapshot) {
       final data = snapshot.data?.data();
+      final translation = data?['translation'] as String? ?? '';
+      if (translation.isNotEmpty && translation != _forwardedTranslation) {
+        _forwardedTranslation = translation;
+        widget.onTranslation(translation);
+      }
       return widget.builder(
-        data?['translation'] as String? ?? '',
+        translation,
         snapshot.hasError
             ? 'unavailable'
             : data?['status'] as String? ?? 'pending',

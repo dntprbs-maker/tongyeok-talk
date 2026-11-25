@@ -36,6 +36,27 @@ service cloud.firestore {
    return people.size() != 2 || (active(people[0]) && active(people[1])
     && !blockedBy(people[0], people[1]) && !blockedBy(people[1], people[0]));
   }
+  function enrolledSpeaker(uid, language) {
+   let profile = /databases/$(database)/documents/users/$(uid);
+   return exists(profile)
+    && get(profile).data.get('rewardAdEnabled', false) == true
+    && get(profile).data.get('preferredLanguage', '') == language;
+  }
+  function payerAvailable(payer) {
+   let wallet = /databases/$(database)/documents/translationWallets/$(payer);
+   return exists(wallet)
+    && get(wallet).data.get('balance', 0) - get(wallet).data.get('reserved', 0) >= 1;
+  }
+  function adPairPayerReady(cid) {
+   let people = get(/databases/$(database)/documents/conversations/$(cid)).data.participants;
+   let first = people.size() == 2 ? people[0] : '';
+   let second = people.size() == 2 ? people[1] : '';
+   let payer = first == '' ? ''
+    : (enrolledSpeaker(first, 'Mongolian') ? first
+     : (enrolledSpeaker(second, 'Mongolian') ? second : ''));
+   let other = payer == first ? second : first;
+   return payer == '' || !enrolledSpeaker(other, 'Korean') || payerAvailable(payer);
+  }
   match /accountDeletionRequests/{uid} {
    allow get: if request.auth != null && request.auth.uid == uid;
   }
@@ -74,6 +95,7 @@ service cloud.firestore {
     && request.resource.data.preferredLanguage in ['Korean','Mongolian']
     && request.resource.data.createdAt == request.time;
    allow update: if signed() && request.auth.uid == uid
+     && !resource.data.keys().hasAny(['preferredLanguage'])
     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preferredLanguage'])
     && request.resource.data.preferredLanguage in ['Korean','Mongolian'];
    match /pushDevices/{device} {
@@ -142,11 +164,35 @@ service cloud.firestore {
      && get(/databases/$(database)/documents/conversations/$(cid)/messages/$(request.resource.data.messageId)).data.get('translationStatus', 'pending') != 'done';
    }
    match /messages/{mid} {
+    match /translationReports/{uid} {
+     function message() {
+      return get(/databases/$(database)/documents/conversations/$(cid)/messages/$(mid)).data;
+     }
+     function translated(d) {
+      let view = /databases/$(database)/documents/conversations/$(cid)/messages/$(mid)/creditTranslations/$(uid);
+      return (message().get('translationStatus', '') == 'done'
+        && message().get('translations', {}).get(d.target, '') == d.translation)
+       || (exists(view) && get(view).data.status == 'done'
+        && get(view).data.translation == d.translation);
+     }
+     allow get: if member(cid) && request.auth.uid == uid;
+     allow create: if member(cid) && request.auth.uid == uid
+      && request.resource.data.keys().hasOnly(['original', 'source', 'target', 'translation', 'createdAt'])
+      && request.resource.data.source in ['ko', 'mn']
+      && request.resource.data.target in ['ko', 'mn']
+      && request.resource.data.target != request.resource.data.source
+      && request.resource.data.source == message().sourceLang
+      && request.resource.data.original == message().originalText
+      && request.resource.data.translation is string
+      && request.resource.data.translation.size() > 0
+      && request.resource.data.createdAt == request.time
+      && translated(request.resource.data);
+    }
     match /creditTranslations/{uid} {
      allow get: if member(cid) && request.auth.uid == uid;
     }
     allow read: if member(cid);
-    allow create: if member(cid) && openDirectRoom(cid)
+    allow create: if member(cid) && openDirectRoom(cid) && adPairPayerReady(cid)
      && request.resource.data.keys().hasOnly(['senderId','originalText','translations','timestamp','sourceLang'])
      && request.resource.data.senderId == request.auth.uid
      && request.resource.data.originalText is string && request.resource.data.originalText.matches('(?s)^.{1,200}$')

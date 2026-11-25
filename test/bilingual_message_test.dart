@@ -69,19 +69,34 @@ void main() {
       ),
     );
   });
-  testWidgets('failed translation retains original and invokes retry', (
-    t,
-  ) async {
-    var calls = 0;
-    await t.pumpWidget(bubble(status: 'failed', retry: () => calls++));
-    await t.pumpAndSettle();
-    expect(find.textContaining('청소해 주세요', findRichText: true), findsOneWidget);
-    await t.tap(find.text('번역 다시 시도'));
-    expect(calls, 1);
-  });
+  testWidgets(
+    'failed translation retains original and retries only for Mongolian',
+    (t) async {
+      var calls = 0;
+      await t.pumpWidget(bubble(status: 'failed', retry: () => calls++));
+      await t.pumpAndSettle();
+      expect(
+        find.textContaining('청소해 주세요', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.text('번역 다시 시도'), findsNothing);
+      expect(calls, 0);
+      await AppLanguage.instance.select('mn');
+      await t.pumpWidget(
+        bubble(source: 'mn', status: 'failed', retry: () => calls++),
+      );
+      await t.pumpAndSettle();
+      expect(
+        find.textContaining('Цэвэрлээрэй', findRichText: true),
+        findsOneWidget,
+      );
+      await t.tap(find.text('Дахин орчуулах'));
+      expect(calls, 1);
+    },
+  );
 
   testWidgets(
-    'hidden other language reveals original or translation for each source',
+    'hidden other language hides Korean toggle and reveals Mongolian original',
     (t) async {
       await ChatDisplayPreferences.instance.setShowOtherLanguage(false);
       for (final source in ['ko', 'mn']) {
@@ -95,7 +110,11 @@ void main() {
           find.textContaining('Цэвэрлээрэй', findRichText: true),
           findsNothing,
         );
-        await t.tap(find.text(source == 'ko' ? '번역 보기' : '원문 보기'));
+        if (source == 'ko') {
+          expect(find.text('번역 보기'), findsNothing);
+          continue;
+        }
+        await t.tap(find.text('원문 보기'));
         await t.pump();
         expect(
           find.textContaining('Цэвэрлээрэй', findRichText: true),

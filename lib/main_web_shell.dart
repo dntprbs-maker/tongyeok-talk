@@ -71,6 +71,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   final _socialDevice = NativeSocialLoginDevice();
   bool _rewardBusy = false;
   bool _socialBusy = false;
+  bool _backBusy = false;
   bool get _android => defaultTargetPlatform == TargetPlatform.android;
   bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
   bool get _canReward =>
@@ -299,10 +300,24 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     }
   }
 
+  Future<void> _handleAndroidBack() async {
+    if (_backBusy) return;
+    _backBusy = true;
+    try {
+      if (await _controller.canGoBack()) {
+        await _controller.goBack();
+        return;
+      }
+      await SystemNavigator.pop();
+    } finally {
+      _backBusy = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mongolian = Localizations.localeOf(context).languageCode == 'mn';
-    return Scaffold(
+    final shell = Scaffold(
       body: SafeArea(
         child: Column(
           children: [
@@ -361,6 +376,16 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
           ],
         ),
       ),
+    );
+    if (!_android) {
+      return shell;
+    }
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleAndroidBack();
+      },
+      child: shell,
     );
   }
 }

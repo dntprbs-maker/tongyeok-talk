@@ -9,6 +9,7 @@ import 'auth_screen.dart';
 import 'auth_service.dart';
 import 'register_phone_screen.dart';
 import 'recent_conversations_screen.dart';
+import 'past_chats_screen.dart';
 import 'new_conversation_screen.dart';
 import 'home_screen.dart';
 import 'settings_screen.dart';
@@ -91,6 +92,7 @@ class MyApp extends StatelessWidget {
                 '/recentConversations': (_) => RecentConversationsScreen(),
                 '/registerPhone': (_) => const RegisterPhoneScreen(),
                 '/newConversation': (_) => const NewConversationScreen(),
+                '/pastChats': (_) => const Scaffold(body: PastChats()),
                 '/settings': (_) => const SettingsScreen(),
               },
               builder:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,9 +12,9 @@ import 'query_audit.dart';
 import 'settings_screen.dart';
 import 'translation_wallet.dart';
 import 'reward_ad_service.dart';
-import 'reward_ads_section.dart' show isRewardLeader;
 import 'reward_ads_screen.dart';
 import 'reward_platform.dart' as reward_platform;
+import 'guest_rooms_list.dart';
 
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
@@ -92,7 +94,9 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                   child: TranslationWallet(
                     compact: true,
                     balanceOnly: true,
-                    showLeaderPass: enabled && isRewardLeader(profile),
+                    showLeaderPass:
+                        profile != null &&
+                        profile['preferredLanguage'] == 'Korean',
                   ),
                 ),
                 if (canWatch) ...[
@@ -157,6 +161,11 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
           icon: const Icon(Icons.search),
           onPressed: () => _open('/newConversation'),
         ),
+        IconButton(
+          tooltip: tr(context, 'pastChats'),
+          icon: const Icon(Icons.history),
+          onPressed: () => _open('/pastChats'),
+        ),
         NotificationPrompt(
           key: _prompt,
           iconOnly: true,
@@ -164,7 +173,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
             await Navigator.push(
               context,
               MaterialPageRoute<void>(
-                builder: (_) => const SettingsScreen(showNotifications: true),
+                builder: (_) => const IncomingNoticesScreen(),
               ),
             );
             _prompt.currentState?.refresh();
@@ -186,6 +195,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(child: _rewardSummary()),
+              SliverToBoxAdapter(child: GuestRoomsList()),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: _rooms,
                 builder: (context, snapshot) {
@@ -380,4 +390,258 @@ class ConversationHomeHeading extends StatelessWidget {
       ),
     ],
   );
+}
+
+class IncomingNoticesScreen extends StatefulWidget {
+  const IncomingNoticesScreen({super.key});
+  @override
+  State<IncomingNoticesScreen> createState() => _IncomingNoticesScreenState();
+}
+
+class _IncomingNoticesScreenState extends State<IncomingNoticesScreen> {
+  final currentUser = FirebaseAuth.instance.currentUser!;
+  final _names = <String, Future<Map<String, dynamic>?>>{};
+  late final _rooms =
+      FirebaseFirestore.instance
+          .collection('conversations')
+          .where('participants', arrayContains: currentUser.uid)
+          .orderBy('timestamp', descending: true)
+          .snapshots();
+
+  Future<String> _displayName(Map<String, dynamic> data) async {
+    final group = data['groupName'] as String?;
+    if (group != null && group.trim().isNotEmpty) return group;
+    final names = <String>[];
+    final participants = List<String>.from(data['participants'] as List? ?? []);
+    for (final uid in participants.where((id) => id != currentUser.uid)) {
+      final profile = await _names.putIfAbsent(uid, () async {
+        auditQuery('profile_get');
+        return (await FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .get())
+            .data();
+      });
+      names.add(
+        profile?['displayName'] as String? ??
+            profile?['username'] as String? ??
+            AppLanguage.instance.text('unknownUser'),
+      );
+    }
+    return names.isEmpty
+        ? AppLanguage.instance.text('unknownUser')
+        : names.join(', ');
+  }
+
+  Future<String> _senderName(String uid) async {
+    final profile = await _names.putIfAbsent(uid, () async {
+      auditQuery('profile_get');
+      return (await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get())
+          .data();
+    });
+    return profile?['displayName'] as String? ??
+        profile?['username'] as String? ??
+        AppLanguage.instance.text('unknownUser');
+  }
+
+  final _notices = <String, Future<_IncomingNotice?>>{};
+  String _combinedKey = '';
+  Future<List<_IncomingNotice?>>? _combined;
+
+  Future<_IncomingNotice?> _notice(
+    String roomId,
+    Map<String, dynamic> room,
+    Timestamp? revision,
+  ) {
+    final key = '$roomId@${revision?.millisecondsSinceEpoch ?? 0}';
+    return _notices.putIfAbsent(key, () => _loadNotice(roomId, room));
+  }
+
+  Future<_IncomingNotice?> _loadNotice(
+    String roomId,
+    Map<String, dynamic> room,
+  ) async {
+    final receipt = await ReadReceipts.ref(roomId, currentUser.uid).get();
+    final through = receipt.data()?['readThrough'] as Timestamp?;
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(roomId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .limit(30);
+    if (through != null) {
+      query = query.where('timestamp', isGreaterThan: through);
+    }
+    auditQuery('incoming_notice_query');
+    final result = await query.get();
+    final docs =
+        result.docs
+            .where((d) => (d.data()['senderId'] as String?) != currentUser.uid)
+            .toList();
+    if (docs.isEmpty) return null;
+    final message = docs.first.data();
+    final senderId = message['senderId'] as String?;
+    if (senderId == null) return null;
+    return _IncomingNotice(
+      roomName: await _displayName(room),
+      senderName: await _senderName(senderId),
+      text: message['originalText'] as String? ?? '',
+      timestamp: message['timestamp'] as Timestamp?,
+    );
+  }
+
+  Future<void> _openNotice(String roomId, String roomName) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder:
+            (_) => ChatScreen(conversationId: roomId, otherUserName: roomName),
+      ),
+    );
+    _notices.removeWhere((key, _) => key.startsWith('$roomId@'));
+    if (mounted) setState(() => _combinedKey = '');
+  }
+
+  Widget _noticeTile(
+    QueryDocumentSnapshot<Map<String, dynamic>> room,
+    _IncomingNotice notice,
+  ) {
+    final data = room.data();
+    return ListTile(
+      leading: UnreadAvatar(
+        key: ValueKey(room.id),
+        conversationId: room.id,
+        uid: currentUser.uid,
+        displayName: notice.roomName,
+        group: data['isGroup'] == true,
+        messageRevision: data['timestamp'] as Timestamp?,
+      ),
+      title: Text(
+        notice.senderName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(notice.text, maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing:
+          notice.timestamp == null
+              ? null
+              : Text(
+                DateFormat(
+                  'MM.dd HH:mm',
+                  AppLanguage.instance.code,
+                ).format(notice.timestamp!.toDate().toLocal()),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF757D8B)),
+              ),
+      onTap: () => _openNotice(room.id, notice.roomName),
+    );
+  }
+
+  Widget _empty(BuildContext context) => Padding(
+    padding: const EdgeInsets.all(32),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          Icons.notifications_none,
+          size: 48,
+          color: Color(0xFF7581CA),
+        ),
+        const SizedBox(height: 16),
+        Text(tr(context, 'noticeEmpty'), textAlign: TextAlign.center),
+      ],
+    ),
+  );
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(tr(context, 'noticesTitle')),
+      actions: [
+        IconButton(
+          tooltip: tr(context, 'settings'),
+          icon: const Icon(Icons.settings_outlined),
+          onPressed:
+              () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen(showNotifications: true),
+                ),
+              ),
+        ),
+      ],
+    ),
+    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: _rooms,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(tr(context, errorKey(snapshot.error!))),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final docs = snapshot.data!.docs;
+        if (docs.isEmpty) return _empty(context);
+        final signature = docs
+            .map(
+              (d) =>
+                  '${d.id}@${(d.data()['timestamp'] as Timestamp?)?.millisecondsSinceEpoch ?? 0}',
+            )
+            .join('|');
+        if (signature != _combinedKey) {
+          _combinedKey = signature;
+          _combined = Future.wait(<Future<_IncomingNotice?>>[
+            for (final room in docs)
+              _notice(
+                room.id,
+                room.data(),
+                room.data()['timestamp'] as Timestamp?,
+              ),
+          ]);
+        }
+        return FutureBuilder<List<_IncomingNotice?>>(
+          future: _combined,
+          builder: (context, all) {
+            if (all.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (all.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(tr(context, errorKey(all.error!))),
+                ),
+              );
+            }
+            final notices = all.data ?? const <_IncomingNotice?>[];
+            final rows = <Widget>[
+              for (var i = 0; i < docs.length && i < notices.length; i++)
+                if (notices[i] != null) _noticeTile(docs[i], notices[i]!),
+            ];
+            if (rows.isEmpty) return Center(child: _empty(context));
+            return ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: rows,
+            );
+          },
+        );
+      },
+    ),
+  );
+}
+
+class _IncomingNotice {
+  final String roomName, senderName, text;
+  final Timestamp? timestamp;
+  const _IncomingNotice({
+    required this.roomName,
+    required this.senderName,
+    required this.text,
+    required this.timestamp,
+  });
 }

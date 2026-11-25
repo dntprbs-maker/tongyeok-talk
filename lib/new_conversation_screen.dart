@@ -9,6 +9,7 @@ import 'auth_service.dart';
 import 'phone_identity.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
+import 'guest_chat_screen.dart';
 
 const _mobilePrefix = '010-';
 const _emptyPhone = TextEditingValue(
@@ -192,10 +193,22 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
               onChanged: _busy ? null : (v) => setState(() => _group = v),
             ),
             const SizedBox(height: 16),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.qr_code_2),
+              label: Text(tr(context, 'guestInvite')),
+              onPressed:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const GuestInviteScreen(),
+                    ),
+                  ),
+            ),
             TextField(
               key: const ValueKey('search-phone'),
               controller: _phone,
-              autofocus: kIsWeb || defaultTargetPlatform != TargetPlatform.android,
+              autofocus:
+                  kIsWeb || defaultTargetPlatform != TargetPlatform.android,
               inputFormatters: const [_PhoneSearchFormatter()],
               enabled: !_busy,
               keyboardType: TextInputType.phone,

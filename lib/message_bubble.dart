@@ -70,7 +70,8 @@ class _MessageBubbleState extends State<MessageBubble> {
     final primaryReady = values[primary] != null;
     final always = ChatDisplayPreferences.instance.showOtherLanguage;
     // Never hide the only available original while waiting for translation.
-    final showSecondary = (always || _expanded || !primaryReady) &&
+    final showSecondary =
+        (always || _expanded || !primaryReady) &&
         (widget.translationStatus != 'done' || values.containsKey(secondary));
     final color = mine ? Colors.white : const Color(0xFF172635);
     final muted =
@@ -88,16 +89,13 @@ class _MessageBubbleState extends State<MessageBubble> {
           TextSpan(
             text:
                 values[language] ??
-                tr(
-                  context,
-                  switch (widget.translationStatus) {
-                    'failed' => 'translationFailed',
-                    'no_credit' => 'creditNoBalance',
-                    'no_day_pass' => 'adPairNeedsPass',
-                    'unavailable' => 'creditUnavailable',
-                    _ => 'translationPending',
-                  },
-                ),
+                tr(context, switch (widget.translationStatus) {
+                  'failed' => 'translationFailed',
+                  'no_credit' => 'creditNoBalance',
+                  'no_day_pass' => 'adPairNeedsPass',
+                  'unavailable' => 'creditUnavailable',
+                  _ => 'translationPending',
+                }),
           ),
         ],
       ),
@@ -128,7 +126,9 @@ class _MessageBubbleState extends State<MessageBubble> {
         children: [
           line(primary, main: true),
           if (showSecondary) ...[const SizedBox(height: 5), line(secondary)],
-          if (widget.translationStatus != 'done' && widget.onRetry != null)
+          if (widget.translationStatus != 'done' &&
+              widget.onRetry != null &&
+              primary == 'mn')
             TextButton(
               onPressed: widget.onRetry,
               style: TextButton.styleFrom(foregroundColor: color),
@@ -153,14 +153,21 @@ class _MessageBubbleState extends State<MessageBubble> {
             crossAxisAlignment:
                 mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              GestureDetector(onLongPress: widget.onReportTranslation, child: bubble),
+              GestureDetector(
+                onLongPress: widget.onReportTranslation,
+                child: bubble,
+              ),
               Wrap(
                 spacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 alignment: mine ? WrapAlignment.end : WrapAlignment.start,
                 children: [
                   if (widget.onReportTranslation != null)
-                    IconButton(onPressed: widget.onReportTranslation, tooltip: tr(context, 'reportTranslation'), icon: const Icon(Icons.flag_outlined, size: 18)),
+                    IconButton(
+                      onPressed: widget.onReportTranslation,
+                      tooltip: tr(context, 'reportTranslation'),
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                    ),
                   Padding(
                     padding: const EdgeInsets.only(top: 2, left: 3, right: 3),
                     child: Text(
@@ -175,7 +182,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                       ),
                     ),
                   ),
-                  if (!always && primaryReady)
+                  if (!always &&
+                      primaryReady &&
+                      (primary == 'mn' || secondary == source))
                     OutlinedButton.icon(
                       onPressed: () => setState(() => _expanded = !_expanded),
                       icon: Icon(
