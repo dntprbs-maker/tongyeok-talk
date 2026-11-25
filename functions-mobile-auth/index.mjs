@@ -2,6 +2,7 @@ import {initializeApp} from 'firebase-admin/app';
 import {getAuth} from 'firebase-admin/auth';
 import {onRequest} from 'firebase-functions/v2/https';
 import {exchangeMobileLogin} from './mobile-login.mjs';
+import {qaAccess} from './qa-access.mjs';
 
 initializeApp();
 
@@ -22,10 +23,28 @@ export const mobileAuthExchange = onRequest({
     return;
   }
   const auth = getAuth();
+  const purpose = req.body?.purpose;
+  if (purpose === 'qa-access' || purpose === 'qa-switch') {
+    const result = await qaAccess({
+      method: req.method,
+      authorization: req.get('authorization'),
+      purpose,
+      target: req.body?.target,
+      config: {
+        operator: process.env.TONGYEOK_QA_OPERATOR_UID,
+        korean: process.env.TONGYEOK_QA_KOREAN_UID,
+        mongolian: process.env.TONGYEOK_QA_MONGOLIAN_UID,
+      },
+      verify: token => auth.verifyIdToken(token, true),
+      issue: (uid, claims) => auth.createCustomToken(uid, claims),
+    });
+    res.status(result.status).json(result.body);
+    return;
+  }
   const result = await exchangeMobileLogin({
     method: req.method,
     authorization: req.get('authorization'),
-    purpose: req.body?.purpose,
+    purpose,
     provider: req.body?.provider,
     reviewUids,
     verify: token => auth.verifyIdToken(token, true),

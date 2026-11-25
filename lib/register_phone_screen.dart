@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'app_language.dart';
 import 'auth_service.dart';
 import 'phone_identity.dart';
 import 'referral_screen.dart';
+import 'qa_account_switcher.dart';
 
 class RegisterPhoneScreen extends StatefulWidget {
   const RegisterPhoneScreen({super.key});
@@ -64,6 +66,10 @@ class _RegisterPhoneScreenState extends State<RegisterPhoneScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(tr(context, 'registerPhone'))),
+    floatingActionButton: switch (FirebaseAuth.instance.currentUser) {
+      final User user => QaAccountSwitcher(user: user),
+      null => null,
+    },
     body: SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(24),

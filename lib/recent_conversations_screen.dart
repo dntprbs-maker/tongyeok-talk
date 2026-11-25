@@ -15,6 +15,7 @@ import 'reward_ad_service.dart';
 import 'reward_ads_screen.dart';
 import 'reward_platform.dart' as reward_platform;
 import 'guest_rooms_list.dart';
+import 'qa_account_switcher.dart';
 
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
@@ -148,6 +149,7 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Colors.white,
+    floatingActionButton: QaAccountSwitcher(user: currentUser),
     appBar: AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,

@@ -20,7 +20,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
-  final _notificationSection = GlobalKey();
+  final _pushChanges = ValueNotifier<int>(0);
   late final _profile =
       FirebaseFirestore.instance
           .collection('users')
@@ -44,10 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _readPush();
     if (widget.showNotifications) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final target = _notificationSection.currentContext;
-        if (mounted && target != null) {
-          Scrollable.ensureVisible(target, alignment: 0.1);
-        }
+        if (mounted) _openPush();
       });
     }
   }
@@ -55,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _pushChanges.dispose();
     super.dispose();
   }
 
@@ -79,6 +77,8 @@ class _SettingsScreenState extends State<SettingsScreen>
           _error = 'pushFailed';
         });
       }
+    } finally {
+      if (mounted) _pushChanges.value++;
     }
   }
 
@@ -88,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       _busy = true;
       _error = null;
     });
+    _pushChanges.value++;
     try {
       if (_push == 'enabled') {
         if (platform.appleMobile) return;
@@ -100,7 +101,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (_) {
       if (mounted) setState(() => _error = 'pushFailed');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        _pushChanges.value++;
+      }
     }
   }
 
@@ -122,194 +126,244 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        title: Text(
-          tr(context, 'settings'),
-          style: const TextStyle(fontWeight: FontWeight.w800),
+  void _showDetails(String title, Widget child) {
+    showDialog<void>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: Text(title),
+            scrollable: true,
+            content: SizedBox(width: 420, child: child),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(tr(dialogContext, 'chatCreditClose')),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _openAccount() => _showDetails(
+    tr(context, 'account'),
+    Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: _profile,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Text(tr(context, errorKey(snap.error!)));
+            }
+            final data = snap.data?.data();
+            final name =
+                data?['displayName'] as String? ??
+                data?['username'] as String? ??
+                '';
+            final preferredLanguage = data?['preferredLanguage'] as String?;
+            final languageLabel =
+                !snap.hasData
+                    ? ''
+                    : preferredLanguage == 'Mongolian'
+                    ? tr(context, 'mn')
+                    : preferredLanguage == 'Korean'
+                    ? tr(context, 'ko')
+                    : '';
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                backgroundColor: const Color(0xFFE6EFFF),
+                child: Text(name.isEmpty ? '?' : name.characters.first),
+              ),
+              title: Text(
+                name,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              subtitle: Text(
+                '${tr(context, 'signupLanguage')}: $languageLabel\n${tr(context, 'signupLanguageHelp')}',
+              ),
+            );
+          },
         ),
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        const SizedBox(height: 8),
+        FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: _contact,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Text(tr(context, errorKey(snap.error!)));
+            }
+            final data = snap.data?.data();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_error != null) ...[
-                  Text(
-                    tr(context, _error!),
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                Text(
-                  tr(context, 'account'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  future: _profile,
-                  builder: (context, snap) {
-                    if (snap.hasError) {
-                      return Text(tr(context, errorKey(snap.error!)));
-                    }
-                    final data = snap.data?.data();
-                    final name =
-                        data?['displayName'] as String? ??
-                        data?['username'] as String? ??
-                        '';
-                    final preferredLanguage =
-                        data?['preferredLanguage'] as String?;
-                    final languageLabel =
-                        !snap.hasData
-                            ? ''
-                            : preferredLanguage == 'Mongolian'
-                            ? tr(context, 'mn')
-                            : preferredLanguage == 'Korean'
-                            ? tr(context, 'ko')
-                            : '';
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundColor: const Color(0xFFE6EFFF),
-                        child: Text(name.isEmpty ? '?' : name.characters.first),
-                      ),
-                      title: Text(
-                        name,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text(
-                        '${tr(context, 'signupLanguage')}: $languageLabel\n${tr(context, 'signupLanguageHelp')}',
-                      ),
-                    );
-                  },
-                ),
+                if (data != null) Text(data['phoneE164'] as String? ?? ''),
                 const SizedBox(height: 8),
-                FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  future: _contact,
-                  builder: (context, snap) {
-                    if (snap.hasError) {
-                      return Text(tr(context, errorKey(snap.error!)));
-                    }
-                    final data = snap.data?.data();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (data != null)
-                          Text(data['phoneE164'] as String? ?? ''),
-                        const SizedBox(height: 8),
-                        Text(
-                          tr(
-                            context,
-                            data == null ? 'legacyAccount' : 'phoneUnverified',
-                          ),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                const Divider(height: 32),
-                ListTile(
-                  leading: const Icon(Icons.card_giftcard_outlined),
-                  title: Text(referralLabel(context)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap:
-                      () => Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => const ReferralScreen(),
-                        ),
-                      ),
-                ),
-                const Divider(height: 32),
-                Text(
-                  tr(context, 'messageDisplay'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const ChatDisplaySettings(),
-                const Divider(height: 32),
-                Text(
-                  tr(context, 'pushTitle'),
-                  key: _notificationSection,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                const SizedBox(height: 12),
-                if (platform.appleMobile)
-                  ApplePushEnableControl(
-                    status: _push,
-                    busy: _busy || _pushLoading,
-                    onEnable: _togglePush,
-                  )
-                else
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(tr(context, 'pushReception')),
-                    subtitle: Text(tr(context, 'pushDeviceOnly')),
-                    secondary: Icon(
-                      _push == 'enabled'
-                          ? Icons.notifications_active
-                          : Icons.notifications_off_outlined,
-                    ),
-                    value: _push == 'enabled',
-                    onChanged:
-                        _busy || _pushLoading || _push == 'unsupported'
-                            ? null
-                            : (_) => _togglePush(),
-                  ),
-                if (_busy || _pushLoading) const LinearProgressIndicator(),
                 Text(
                   tr(
                     context,
-                    _push == 'enabled'
-                        ? 'pushEnabled'
-                        : _push == 'denied'
-                        ? 'pushDenied'
-                        : _push == 'unsupported'
-                        ? 'pushUnsupported'
-                        : 'pushOff',
+                    data == null ? 'legacyAccount' : 'phoneUnverified',
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  tr(context, 'pushTrial'),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
-                const Divider(height: 32),
-                const SizedBox(height: 32),
-                ListTile(
-                  leading: const Icon(Icons.person_remove_outlined),
-                  title: Text(tr(context, 'deletionTitle')),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap:
-                      _busy
-                          ? null
-                          : () => Navigator.push<void>(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const AccountDeletionScreen(),
-                            ),
-                          ),
-                ),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: Text(tr(context, 'signOut')),
-                  onPressed: _busy ? null : _signOut,
-                ),
               ],
-            ),
-          ),
+            );
+          },
         ),
-      ),
+      ],
+    ),
+  );
+
+  void _openPush() => _showDetails(
+    tr(context, 'pushTitle'),
+    AnimatedBuilder(
+      animation: _pushChanges,
+      builder:
+          (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (platform.appleMobile)
+                ApplePushEnableControl(
+                  status: _push,
+                  busy: _busy || _pushLoading,
+                  onEnable: _togglePush,
+                )
+              else
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(tr(context, 'pushReception')),
+                  subtitle: Text(tr(context, 'pushDeviceOnly')),
+                  secondary: Icon(
+                    _push == 'enabled'
+                        ? Icons.notifications_active
+                        : Icons.notifications_off_outlined,
+                  ),
+                  value: _push == 'enabled',
+                  onChanged:
+                      _busy || _pushLoading || _push == 'unsupported'
+                          ? null
+                          : (_) => _togglePush(),
+                ),
+              if (_busy || _pushLoading) const LinearProgressIndicator(),
+              Text(
+                tr(
+                  context,
+                  _push == 'enabled'
+                      ? 'pushEnabled'
+                      : _push == 'denied'
+                      ? 'pushDenied'
+                      : _push == 'unsupported'
+                      ? 'pushUnsupported'
+                      : 'pushOff',
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                tr(context, 'pushTrial'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (_error == 'pushFailed')
+                Text(
+                  tr(context, 'pushFailed'),
+                  style: const TextStyle(color: Colors.red),
+                ),
+            ],
+          ),
+    ),
+  );
+
+  void _showPage(Widget page) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => FractionallySizedBox(heightFactor: .9, child: page),
     );
   }
+
+  Future<void> _confirmSignOut() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: Text(tr(dialogContext, 'signOut')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(tr(dialogContext, 'cancel')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(tr(dialogContext, 'signOut')),
+              ),
+            ],
+          ),
+    );
+    if (mounted && result == true) await _signOut();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(
+        tr(context, 'settings'),
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          children: [
+            _item(Icons.person_outline, tr(context, 'account'), _openAccount),
+            _item(
+              Icons.card_giftcard_outlined,
+              referralLabel(context),
+              () => _showPage(const ReferralScreen()),
+            ),
+            _item(
+              Icons.chat_bubble_outline,
+              tr(context, 'messageDisplay'),
+              () => _showDetails(
+                tr(context, 'messageDisplay'),
+                const ChatDisplaySettings(),
+              ),
+            ),
+            _item(
+              Icons.notifications_outlined,
+              tr(context, 'pushTitle'),
+              _openPush,
+            ),
+            const Divider(),
+            _item(
+              Icons.logout,
+              tr(context, 'signOut'),
+              _busy ? null : _confirmSignOut,
+            ),
+            _item(
+              Icons.person_remove_outlined,
+              tr(context, 'deletionTitle'),
+              _busy ? null : () => _showPage(const AccountDeletionScreen()),
+            ),
+            if (_error != null && _error != 'pushFailed')
+              Text(
+                tr(context, _error!),
+                style: const TextStyle(color: Colors.red),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _item(IconData icon, String title, VoidCallback? action) => ListTile(
+    leading: Icon(icon),
+    title: Text(title),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: action,
+  );
 }
 
 /// iPhone/iPad offers enabling only; permission remains under iOS control.

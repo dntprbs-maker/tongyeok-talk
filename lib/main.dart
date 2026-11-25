@@ -18,6 +18,7 @@ import 'brand.dart';
 import 'read_receipts.dart';
 import 'chat_display_preferences.dart';
 import 'referral_screen.dart';
+import 'qa_account_switcher.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
@@ -39,7 +40,9 @@ Future<void> main() async {
     user = null;
   }
   final needsPhone =
-      user != null && !await AuthService().hasRegisteredPhone(user);
+      user != null &&
+      !await isQaTestSession(user) &&
+      !await AuthService().hasRegisteredPhone(user);
   runApp(MyApp(isLoggedIn: user != null, needsPhone: needsPhone));
 }
 
