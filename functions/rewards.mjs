@@ -16,7 +16,10 @@ const memberCreditsPerAd = 50;
 const leaderAdsPerDay = 2;
 const DAY=86400000,KST=9*3600000;
 export const midnightKst = at => Math.ceil((at+KST)/DAY)*DAY-KST;
-export const passExpiry = (current,now) => midnightKst(Math.max(now,current||0)+DAY);
+export const passExpiry = (current, now) => {
+  if (current > now) return midnightKst(current + DAY);
+  return (Math.floor((now + KST) / DAY) + 1) * DAY - KST;
+};
 // The product is classified by selected language, never by a workplace role.
 export function rewardRole(profile) {
   if (profile?.rewardQaRole === 'member') return 'member';
