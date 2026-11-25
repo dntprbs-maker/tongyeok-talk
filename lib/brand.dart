@@ -2,6 +2,39 @@ import 'package:flutter/material.dart';
 import 'app_language.dart';
 
 const brandColor = Color(0xFF3346B8);
+const _brandImage = 'assets/images/interpreter-talk.png';
+
+class BrandBarTitle extends StatelessWidget {
+  const BrandBarTitle({super.key});
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Image.asset(
+          _brandImage,
+          width: 26,
+          height: 26,
+          excludeFromSemantics: true,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            tr(context, 'app'),
+            maxLines: 1,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ),
+    ],
+  );
+}
 
 class BrandHeader extends StatelessWidget {
   final bool compact;
@@ -13,7 +46,7 @@ class BrandHeader extends StatelessWidget {
       ClipRRect(
         borderRadius: BorderRadius.circular(compact ? 24 : 32),
         child: Image.asset(
-          'assets/images/interpreter-talk.png',
+          _brandImage,
           width: compact ? 88 : 132,
           height: compact ? 88 : 132,
           semanticLabel: tr(context, 'app'),

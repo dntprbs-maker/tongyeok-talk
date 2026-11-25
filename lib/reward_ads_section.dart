@@ -7,12 +7,17 @@ import 'reward_ad_service.dart';
 import 'reward_platform.dart' as reward_platform;
 
 bool isRewardLeader(Map<String, dynamic>? profile) =>
-    profile?['rewardQaRole'] != 'member' && AppLanguage.instance.code != 'mn';
+    profile?['rewardQaRole'] != 'member' &&
+    (profile?['preferredLanguage'] ?? AppLanguage.instance.profileLanguage) ==
+        'Korean';
 
 DateTime? lastPassMinute(DateTime? expiration) => expiration
     ?.toUtc()
     .add(const Duration(hours: 9))
     .subtract(const Duration(microseconds: 1));
+
+num _availableCredits(Map<String, dynamic> wallet) =>
+    (wallet['balance'] as num? ?? 0) - (wallet['reserved'] as num? ?? 0);
 
 class RewardAdsSection extends StatefulWidget {
   const RewardAdsSection({super.key});
@@ -39,21 +44,43 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
   final _user = FirebaseAuth.instance.currentUser!;
   late final _profile =
       FirebaseFirestore.instance.doc('users/${_user.uid}').snapshots();
-  late final _wallet =
-      FirebaseFirestore.instance
-          .doc('translationWallets/${_user.uid}')
-          .snapshots();
+  late final _walletRef = FirebaseFirestore.instance.doc(
+    'translationWallets/${_user.uid}',
+  );
+  late final _wallet = _walletRef.snapshots();
   bool _busy = false;
   String? _message;
-  String? _session;
-  Future<void> _watch() async {
+  Stream<(num, Map<String, dynamic>?)?>? _rewardReceipt;
+
+  Stream<(num, Map<String, dynamic>?)?> _receiptFor(String sessionId) =>
+      FirebaseFirestore.instance
+          .doc('users/${_user.uid}/adRewardReceipts/$sessionId')
+          .snapshots()
+          .asyncMap((snapshot) async {
+            final receipt = snapshot.data();
+            final amount = receipt?['amount'];
+            if (receipt?['status'] != 'granted' || amount is! num) return null;
+            if (amount == 0) return (amount, null);
+            try {
+              final confirmed = await _walletRef.get(
+                const GetOptions(source: Source.server),
+              );
+              return (amount, confirmed.data());
+            } catch (_) {
+              return (amount, null);
+            }
+          });
+  Future<void> _watch(Map<String, dynamic>? profile) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _message = null;
+      _rewardReceipt = null;
     });
     try {
-      if (!rewardPlaybackTest) {
+      // Firestore only permits setting the language once, for older profiles.
+      if (!rewardPlaybackTest &&
+          profile?.containsKey('preferredLanguage') != true) {
         await FirebaseFirestore.instance.doc('users/${_user.uid}').update({
           'preferredLanguage': AppLanguage.instance.profileLanguage,
         });
@@ -61,7 +88,7 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
       final earned = await RewardAdService.watch(
         user: _user,
         onSession: (id) {
-          if (mounted) setState(() => _session = id);
+          if (mounted) setState(() => _rewardReceipt = _receiptFor(id));
         },
       );
       if (mounted) {
@@ -102,24 +129,15 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
       return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         stream: _wallet,
         builder:
-            (
-              context,
-              wallet,
-            ) => StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-              stream:
-                  _session == null
-                      ? null
-                      : FirebaseFirestore.instance
-                          .doc('users/${_user.uid}/adRewardReceipts/$_session')
-                          .snapshots(),
+            (context, wallet) => StreamBuilder<(num, Map<String, dynamic>?)?>(
+              key: ObjectKey(_rewardReceipt),
+              stream: _rewardReceipt,
               builder: (context, receipt) {
                 final w = wallet.data?.data() ?? {};
-                final latest = receipt.data?.data();
+                final confirmed = receipt.data?.$2;
                 return RewardAdsPanel(
                   role: isRewardLeader(value) ? 'leader' : 'member',
-                  availableCredits:
-                      ((w['balance'] as num? ?? 0) -
-                          (w['reserved'] as num? ?? 0)),
+                  availableCredits: _availableCredits(w),
                   passUntil: (w['leaderPassUntil'] as Timestamp?)?.toDate(),
                   leaderAdProgress: w['leaderRewardAdProgress'] == 1 ? 1 : 0,
                   balanceLoading: !wallet.hasData && !wallet.hasError,
@@ -127,14 +145,13 @@ class _RewardAdsSectionState extends State<RewardAdsSection> {
                   busy: _busy,
                   supported: rewardAdsSupported,
                   testMode: effectiveRewardTestMode,
-                  message:
-                      latest?['status'] == 'granted' &&
-                              _message == 'adVerifying'
-                          ? (latest?['amount'] == 0
-                              ? 'adLeaderHalfway'
-                              : 'adGranted')
-                          : _message,
-                  onWatch: _watch,
+                  message: _message,
+                  grantedAmount: _busy ? null : receipt.data?.$1,
+                  confirmedCredits:
+                      confirmed == null ? null : _availableCredits(confirmed),
+                  confirmedPassUntil:
+                      (confirmed?['leaderPassUntil'] as Timestamp?)?.toDate(),
+                  onWatch: () => _watch(value),
                   onPrivacy: () async {
                     try {
                       await RewardAdService.privacyOptions();
@@ -157,6 +174,8 @@ class RewardAdsPanel extends StatelessWidget {
   final int leaderAdProgress;
   final bool busy, supported, testMode, balanceLoading, balanceError;
   final String? message;
+  final num? grantedAmount, confirmedCredits;
+  final DateTime? confirmedPassUntil;
   final VoidCallback onWatch, onPrivacy;
   const RewardAdsPanel({
     super.key,
@@ -170,13 +189,25 @@ class RewardAdsPanel extends StatelessWidget {
     required this.supported,
     required this.testMode,
     this.message,
+    this.grantedAmount,
+    this.confirmedCredits,
+    this.confirmedPassUntil,
     required this.onWatch,
     required this.onPrivacy,
   });
   @override
   Widget build(BuildContext context) {
     final leader = role == 'leader';
-    final lastUsableMinute = lastPassMinute(passUntil);
+    final now = DateTime.now();
+    final hasPass = passUntil?.isAfter(now) ?? false;
+    final lastUsableMinute = hasPass ? lastPassMinute(passUntil) : null;
+    final offer =
+        !leader
+            ? 'adMemberOffer'
+            : leaderAdProgress == 1
+            ? (hasPass ? 'adLeaderNextExtends' : 'adLeaderNextToday')
+            : (hasPass ? 'adLeaderOffer' : 'adLeaderOfferToday');
+    final result = _result(context, leader);
     final theme = Theme.of(context);
     final balance =
         leader
@@ -276,7 +307,9 @@ class RewardAdsPanel extends StatelessWidget {
         ] else
           const SizedBox(height: 24),
         Text(
-          tr(context, leader ? 'adLeaderOffer' : 'adMemberOffer'),
+          leader
+              ? '${tr(context, offer)} · $leaderAdProgress/2'
+              : tr(context, offer),
           textAlign: TextAlign.center,
           style: theme.textTheme.bodyLarge,
         ),
@@ -314,10 +347,13 @@ class RewardAdsPanel extends StatelessWidget {
           ),
         ),
         if (!supported) Text(tr(context, 'adAndroidOnly')),
-        if (message != null)
+        if (result != null)
           Padding(
             padding: const EdgeInsets.only(top: 12),
-            child: Text(tr(context, message!), textAlign: TextAlign.center),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(result, textAlign: TextAlign.center),
+            ),
           ),
         if (supported)
           TextButton(
@@ -326,5 +362,27 @@ class RewardAdsPanel extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  String? _result(BuildContext context, bool leader) {
+    final amount = grantedAmount;
+    if (amount == null) return message == null ? null : tr(context, message!);
+    if (!leader) {
+      return tr(
+        context,
+        confirmedCredits == null ? 'adMemberGrantOnly' : 'adMemberGranted',
+        {'amount': '$amount', 'balance': '$confirmedCredits'},
+      );
+    }
+    if (amount == 0) return tr(context, 'adLeaderHalfway');
+    final expiry = lastPassMinute(confirmedPassUntil);
+    return expiry == null
+        ? tr(context, 'adGranted')
+        : tr(context, 'adLeaderGranted', {
+          'month': '${expiry.month}',
+          'day': '${expiry.day}',
+          'time':
+              '${expiry.hour.toString().padLeft(2, '0')}:${expiry.minute.toString().padLeft(2, '0')}',
+        });
   }
 }

@@ -4,14 +4,12 @@ import 'push_service.dart';
 
 class NotificationPrompt extends StatefulWidget {
   final Future<String> Function()? readState, enable;
-  final VoidCallback? onOpenSettings;
-  final bool iconOnly;
+  final bool canDismiss;
   const NotificationPrompt({
     super.key,
     this.readState,
     this.enable,
-    this.iconOnly = false,
-    this.onOpenSettings,
+    this.canDismiss = true,
   });
   @override
   State<NotificationPrompt> createState() => NotificationPromptState();
@@ -19,7 +17,6 @@ class NotificationPrompt extends StatefulWidget {
 
 class NotificationPromptState extends State<NotificationPrompt>
     with WidgetsBindingObserver {
-  static bool launchWarningShown = false;
   String? _status;
   bool _busy = false, _dismissed = false;
   @override
@@ -44,19 +41,6 @@ class NotificationPromptState extends State<NotificationPrompt>
     try {
       final value = await (widget.readState ?? PushService.state)();
       if (mounted) setState(() => _status = value);
-      if (mounted &&
-          value != 'enabled' &&
-          value != 'unsupported' &&
-          !launchWarningShown) {
-        launchWarningShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(tr(context, 'pushLaunchWarning'))),
-            );
-          }
-        });
-      }
     } catch (_) {
       if (mounted) setState(() => _status = 'off');
     }
@@ -99,24 +83,6 @@ class NotificationPromptState extends State<NotificationPrompt>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.iconOnly) {
-      final enabled = _status == 'enabled';
-      return IconButton(
-        tooltip:
-            '${tr(context, 'pushTitle')} · ${tr(context, enabled ? 'pushEnabled' : 'pushOff')}',
-        onPressed: widget.onOpenSettings,
-        icon: Badge(
-          isLabelVisible: _status != null && !enabled,
-          smallSize: 7,
-          backgroundColor: const Color(0xFFD92C40),
-          child: Icon(
-            enabled
-                ? Icons.notifications_outlined
-                : Icons.notifications_off_outlined,
-          ),
-        ),
-      );
-    }
     if (_status == null ||
         _status == 'enabled' ||
         _status == 'unsupported' ||
@@ -143,7 +109,12 @@ class NotificationPromptState extends State<NotificationPrompt>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  tr(context, 'notificationPromptTitle'),
+                  tr(
+                    context,
+                    widget.canDismiss
+                        ? 'notificationPromptTitle'
+                        : 'noticesPushOff',
+                  ),
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -166,13 +137,14 @@ class NotificationPromptState extends State<NotificationPrompt>
                       onPressed: _busy ? null : _enable,
                       child: Text(tr(context, 'notificationPromptEnable')),
                     ),
-                    TextButton(
-                      onPressed:
-                          _busy
-                              ? null
-                              : () => setState(() => _dismissed = true),
-                      child: Text(tr(context, 'later')),
-                    ),
+                    if (widget.canDismiss)
+                      TextButton(
+                        onPressed:
+                            _busy
+                                ? null
+                                : () => setState(() => _dismissed = true),
+                        child: Text(tr(context, 'later')),
+                      ),
                   ],
                 ),
               ],

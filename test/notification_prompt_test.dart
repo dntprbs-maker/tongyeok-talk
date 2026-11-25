@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bridgechat/notification_prompt.dart';
+import 'package:bridgechat/notice_bell.dart';
 import 'package:bridgechat/recent_conversations_screen.dart';
 import 'package:bridgechat/app_language.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() async {
-    NotificationPromptState.launchWarningShown = false;
     SharedPreferences.setMockInitialValues({});
     await AppLanguage.instance.initialize();
   });
@@ -17,37 +17,40 @@ void main() {
     ),
   );
   testWidgets(
-    'header bell opens settings without changing permission or showing a banner',
+    'the bell keeps its shape and uses the dot only for unread alerts',
     (t) async {
       var opened = 0;
-      var enabled = 0;
-      for (final status in ['off', 'enabled', 'unsupported']) {
+      for (final unread in [false, true]) {
         await t.pumpWidget(
-          page(
-            NotificationPrompt(
-              key: ValueKey(status),
-              iconOnly: true,
-              readState: () async => status,
-              enable: () async {
-                enabled++;
-                return 'enabled';
-              },
-              onOpenSettings: () => opened++,
-            ),
-          ),
+          page(NoticeBell(hasUnread: unread, onOpen: () => opened++)),
         );
         await t.pumpAndSettle();
-        expect(find.text('새 메시지를 놓치지 마세요'), findsNothing);
-        expect(
-          t.widget<Badge>(find.byType(Badge)).isLabelVisible,
-          status != 'enabled',
-        );
+        expect(t.widget<Badge>(find.byType(Badge)).isLabelVisible, unread);
+        expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
         await t.tap(find.byType(IconButton));
-        expect(enabled, 0);
       }
-      expect(opened, 3);
+      expect(opened, 2);
     },
   );
+  testWidgets('incoming notices offers direct enable while the device is off', (
+    t,
+  ) async {
+    await t.pumpWidget(
+      page(
+        NotificationPrompt(
+          canDismiss: false,
+          readState: () async => 'off',
+          enable: () async => 'enabled',
+        ),
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(find.text('이 기기의 알림이 꺼져 있어요'), findsOneWidget);
+    expect(find.text('나중에'), findsNothing);
+    await t.tap(find.text('알림 켜기'));
+    await t.pumpAndSettle();
+    expect(find.text('이 기기의 알림이 꺼져 있어요'), findsNothing);
+  });
   testWidgets('already enabled device never shows the prompt', (t) async {
     await t.pumpWidget(
       page(NotificationPrompt(readState: () async => 'enabled')),

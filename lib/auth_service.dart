@@ -37,6 +37,12 @@ class AuthService {
         .doc(user.uid)
         .collection('private')
         .doc('contact');
+    final existingNumber = await lookup.get(
+      const GetOptions(source: Source.server),
+    );
+    if (existingNumber.exists && existingNumber.data()?['uid'] != user.uid) {
+      throw StateError('phoneInUse');
+    }
     await _db.runTransaction((tx) async {
       final directory = await tx.get(lookup);
       final currentContact = await tx.get(contact);

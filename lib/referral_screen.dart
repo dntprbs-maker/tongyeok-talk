@@ -109,7 +109,7 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
               Align(
                 alignment: Alignment.centerRight,
                 child: IconButton(
-                  tooltip: mn ? 'Хаах' : '닫기',
+                  tooltip: tr(dialog, 'chatCreditClose'),
                   onPressed: () => Navigator.pop(dialog),
                   icon: const Icon(Icons.close),
                 ),
@@ -117,7 +117,9 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
               Flexible(
                 child: SingleChildScrollView(
                   child: Image.asset(
-                    'assets/images/referral-announcement.png',
+                    mn
+                        ? 'assets/images/referral-announcement-mn.png'
+                        : 'assets/images/referral-announcement.png',
                     fit: BoxFit.contain,
                     semanticLabel: referralRules(dialog),
                   ),
@@ -127,7 +129,7 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
                 padding: const EdgeInsets.all(14),
                 child: FilledButton(
                   onPressed: () => Navigator.pop(dialog, true),
-                  child: Text(mn ? 'Мессежээр урих' : '문자로 초대하기'),
+                  child: Text(tr(dialog, 'referralSmsInvite')),
                 ),
               ),
             ],

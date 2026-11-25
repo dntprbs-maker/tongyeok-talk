@@ -18,6 +18,7 @@ import 'brand.dart';
 import 'read_receipts.dart';
 import 'chat_display_preferences.dart';
 import 'referral_screen.dart';
+import 'qa_account_switcher.dart';
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
@@ -39,7 +40,9 @@ Future<void> main() async {
     user = null;
   }
   final needsPhone =
-      user != null && !await AuthService().hasRegisteredPhone(user);
+      user != null &&
+      !await isQaTestSession(user) &&
+      !await AuthService().hasRegisteredPhone(user);
   runApp(MyApp(isLoggedIn: user != null, needsPhone: needsPhone));
 }
 
@@ -95,35 +98,6 @@ class MyApp extends StatelessWidget {
                 '/pastChats': (_) => const Scaffold(body: PastChats()),
                 '/settings': (_) => const SettingsScreen(),
               },
-              builder:
-                  (context, child) => Column(
-                    children: [
-                      Material(
-                        color: const Color(0xFFF0F2FC),
-                        child: SafeArea(
-                          bottom: false,
-                          child: SizedBox(
-                            width: double.infinity,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 7,
-                              ),
-                              child: Text(
-                                tr(context, 'preview'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF414967),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(child: child ?? const SizedBox()),
-                    ],
-                  ),
               theme: ThemeData(
                 useMaterial3: true,
                 colorScheme: ColorScheme.fromSeed(seedColor: brandColor),

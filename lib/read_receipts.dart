@@ -14,6 +14,36 @@ class ReadReceipts {
           .collection('reads')
           .doc(uid);
 
+  static Query<Map<String, dynamic>> unreadMessages(
+    String cid,
+    String uid,
+    Timestamp? through,
+  ) {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
+        .collection('conversations')
+        .doc(cid)
+        .collection('messages')
+        .where('senderId', isNotEqualTo: uid);
+    if (through != null) {
+      query = query.where('timestamp', isGreaterThan: through);
+    }
+    return query.orderBy('senderId').orderBy('timestamp');
+  }
+
+  static Future<int> unreadCount(
+    String cid,
+    String uid,
+    Timestamp? through, {
+    bool firstOnly = false,
+  }) async {
+    var query = unreadMessages(cid, uid, through);
+    if (firstOnly) query = query.limit(1);
+    auditQuery('unread_aggregate_request');
+    final result = await query.count().get();
+    auditQuery('unread_aggregate_result', {'count': result.count});
+    return result.count ?? 0;
+  }
+
   static Future<void> mark(String cid, String uid, Timestamp through) =>
       FirebaseFirestore.instance.runTransaction((tx) async {
         final receipt = ref(cid, uid);
@@ -126,21 +156,8 @@ class _UnreadAvatarState extends State<UnreadAvatar>
     });
   }
 
-  Future<int> _loadCount(Timestamp? through) async {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-        .collection('conversations')
-        .doc(widget.conversationId)
-        .collection('messages')
-        .where('senderId', isNotEqualTo: widget.uid);
-    if (through != null) {
-      query = query.where('timestamp', isGreaterThan: through);
-    }
-    query = query.orderBy('senderId').orderBy('timestamp');
-    auditQuery('unread_aggregate_request');
-    final result = await query.count().get();
-    auditQuery('unread_aggregate_result', {'count': result.count});
-    return result.count ?? 0;
-  }
+  Future<int> _loadCount(Timestamp? through) =>
+      ReadReceipts.unreadCount(widget.conversationId, widget.uid, through);
 
   @override
   void dispose() {
