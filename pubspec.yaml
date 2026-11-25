@@ -82,6 +82,7 @@ flutter:
         - assets/images/BridgeChat.png
         - assets/images/interpreter-talk.png
         - assets/images/referral-announcement.png
+        - assets/images/referral-announcement-mn.png
         - assets/images/reward-ticket.png
 
     # An image asset can refer to one or more resolution-specific "variants", see

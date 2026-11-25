@@ -116,14 +116,13 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  child:
-                      mn
-                          ? const _LocalizedReferralAnnouncement()
-                          : Image.asset(
-                            'assets/images/referral-announcement.png',
-                            fit: BoxFit.contain,
-                            semanticLabel: referralRules(dialog),
-                          ),
+                  child: Image.asset(
+                    mn
+                        ? 'assets/images/referral-announcement-mn.png'
+                        : 'assets/images/referral-announcement.png',
+                    fit: BoxFit.contain,
+                    semanticLabel: referralRules(dialog),
+                  ),
                 ),
               ),
               Padding(
@@ -144,77 +143,6 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
       context,
     ).push<void>(MaterialPageRoute(builder: (_) => const ReferralScreen()));
   }
-}
-
-class _LocalizedReferralAnnouncement extends StatelessWidget {
-  const _LocalizedReferralAnnouncement();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF5632A7), Color(0xFF39218B)],
-      ),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          tr(context, 'app'),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          tr(context, 'referralAnnouncementTitle'),
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 16),
-        for (final (role, reward) in [
-          ('referralKoreanUser', 'referralKoreanReward'),
-          ('referralMongolianUser', 'referralMongolianReward'),
-        ])
-          Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tr(context, role)),
-                Text(
-                  tr(context, reward),
-                  style: const TextStyle(
-                    color: Color(0xFF39218B),
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 6),
-        Text(
-          tr(context, 'referralRewardConditions'),
-          style: const TextStyle(color: Colors.white, height: 1.4),
-        ),
-      ],
-    ),
-  );
 }
 
 class ReferralScreen extends StatefulWidget {

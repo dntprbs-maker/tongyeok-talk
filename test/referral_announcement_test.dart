@@ -36,27 +36,20 @@ void main() {
       final popup = find.byType(Dialog);
       expect(popup, findsOneWidget);
       final poster = find.descendant(of: popup, matching: find.byType(Image));
-      if (language == 'ko') {
-        expect(poster, findsOneWidget);
-        expect(find.text('문자로 초대하기'), findsOneWidget);
-      } else {
-        expect(poster, findsNothing);
-        expect(find.text('Найзаа уриад урамшуулал аваарай'), findsOneWidget);
-        expect(find.text('5 өдрийн ашиглах эрх'), findsOneWidget);
-        expect(find.text('500 өгүүлбэр орчуулах эрх'), findsOneWidget);
-        expect(find.textContaining('30 хоног'), findsOneWidget);
-        expect(find.textContaining('10 өөр өдөр'), findsOneWidget);
-        expect(find.text('Мессежээр урих'), findsOneWidget);
-        final visibleStrings = tester.widgetList<Text>(
-          find.descendant(of: popup, matching: find.byType(Text)),
-        );
-        expect(
-          visibleStrings.any(
-            (text) => RegExp(r'[가-힣]').hasMatch(text.data ?? ''),
-          ),
-          isFalse,
-        );
-      }
+      expect(poster, findsOneWidget);
+      final image = tester.widget<Image>(poster);
+      expect(
+        (image.image as AssetImage).assetName,
+        language == 'mn'
+            ? 'assets/images/referral-announcement-mn.png'
+            : 'assets/images/referral-announcement.png',
+      );
+      expect(image.semanticLabel, contains('30'));
+      expect(image.semanticLabel, contains('500'));
+      expect(
+        find.text(language == 'mn' ? 'Мессежээр урих' : '문자로 초대하기'),
+        findsOneWidget,
+      );
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
       expect(popup, findsNothing);
