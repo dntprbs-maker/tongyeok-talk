@@ -105,15 +105,10 @@ class NotificationPromptState extends State<NotificationPrompt>
         tooltip:
             '${tr(context, 'pushTitle')} · ${tr(context, enabled ? 'pushEnabled' : 'pushOff')}',
         onPressed: widget.onOpenSettings,
-        icon: Badge(
-          isLabelVisible: _status != null && !enabled,
-          smallSize: 7,
-          backgroundColor: const Color(0xFFD92C40),
-          child: Icon(
-            enabled
-                ? Icons.notifications_outlined
-                : Icons.notifications_off_outlined,
-          ),
+        icon: Icon(
+          enabled
+              ? Icons.notifications_outlined
+              : Icons.notifications_off_outlined,
         ),
       );
     }

@@ -155,36 +155,51 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
       title: const BrandBarTitle(),
+      titleSpacing: 8,
+      actionsPadding: const EdgeInsetsDirectional.only(end: 4),
       actions: [
-        IconButton(
-          tooltip: tr(context, 'findPeople'),
-          icon: const Icon(Icons.search),
-          onPressed: () => _open('/newConversation'),
-        ),
-        IconButton(
-          tooltip: tr(context, 'pastChats'),
-          icon: const Icon(Icons.history),
-          onPressed: () => _open('/pastChats'),
-        ),
-        NotificationPrompt(
-          key: _prompt,
-          iconOnly: true,
-          onOpenSettings: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => const IncomingNoticesScreen(),
+        IconButtonTheme(
+          data: IconButtonThemeData(
+            style: IconButton.styleFrom(
+              minimumSize: const Size(44, 48),
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: tr(context, 'findPeople'),
+                icon: const Icon(Icons.search),
+                onPressed: () => _open('/newConversation'),
               ),
-            );
-            _prompt.currentState?.refresh();
-          },
+              IconButton(
+                tooltip: tr(context, 'pastChats'),
+                icon: const Icon(Icons.history),
+                onPressed: () => _open('/pastChats'),
+              ),
+              NotificationPrompt(
+                key: _prompt,
+                iconOnly: true,
+                onOpenSettings: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const IncomingNoticesScreen(),
+                    ),
+                  );
+                  _prompt.currentState?.refresh();
+                },
+              ),
+              IconButton(
+                tooltip: tr(context, 'settings'),
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => _open('/settings'),
+              ),
+            ],
+          ),
         ),
-        IconButton(
-          tooltip: tr(context, 'settings'),
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: () => _open('/settings'),
-        ),
-        const SizedBox(width: 8),
       ],
     ),
     body: SafeArea(

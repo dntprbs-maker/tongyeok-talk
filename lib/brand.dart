@@ -15,18 +15,21 @@ class BrandBarTitle extends StatelessWidget {
         borderRadius: BorderRadius.circular(7),
         child: Image.asset(
           _brandImage,
-          width: 28,
-          height: 28,
+          width: 26,
+          height: 26,
           excludeFromSemantics: true,
         ),
       ),
-      const SizedBox(width: 8),
+      const SizedBox(width: 6),
       Flexible(
-        child: Text(
-          tr(context, 'app'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w800),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            tr(context, 'app'),
+            maxLines: 1,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          ),
         ),
       ),
     ],

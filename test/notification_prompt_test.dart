@@ -16,38 +16,42 @@ void main() {
       home: Scaffold(body: SingleChildScrollView(child: child)),
     ),
   );
-  testWidgets(
-    'header bell opens settings without changing permission or showing a banner',
-    (t) async {
-      var opened = 0;
-      var enabled = 0;
-      for (final status in ['off', 'enabled', 'unsupported']) {
-        await t.pumpWidget(
-          page(
-            NotificationPrompt(
-              key: ValueKey(status),
-              iconOnly: true,
-              readState: () async => status,
-              enable: () async {
-                enabled++;
-                return 'enabled';
-              },
-              onOpenSettings: () => opened++,
-            ),
+  testWidgets('header bell shows permission without an unread badge', (
+    t,
+  ) async {
+    var opened = 0;
+    var enabled = 0;
+    for (final status in ['off', 'enabled', 'denied', 'unsupported']) {
+      await t.pumpWidget(
+        page(
+          NotificationPrompt(
+            key: ValueKey(status),
+            iconOnly: true,
+            readState: () async => status,
+            enable: () async {
+              enabled++;
+              return 'enabled';
+            },
+            onOpenSettings: () => opened++,
           ),
-        );
-        await t.pumpAndSettle();
-        expect(find.text('새 메시지를 놓치지 마세요'), findsNothing);
-        expect(
-          t.widget<Badge>(find.byType(Badge)).isLabelVisible,
-          status != 'enabled',
-        );
-        await t.tap(find.byType(IconButton));
-        expect(enabled, 0);
-      }
-      expect(opened, 3);
-    },
-  );
+        ),
+      );
+      await t.pumpAndSettle();
+      expect(find.text('새 메시지를 놓치지 마세요'), findsNothing);
+      expect(find.byType(Badge), findsNothing);
+      expect(
+        find.byIcon(
+          status == 'enabled'
+              ? Icons.notifications_outlined
+              : Icons.notifications_off_outlined,
+        ),
+        findsOneWidget,
+      );
+      await t.tap(find.byType(IconButton));
+      expect(enabled, 0);
+    }
+    expect(opened, 4);
+  });
   testWidgets('already enabled device never shows the prompt', (t) async {
     await t.pumpWidget(
       page(NotificationPrompt(readState: () async => 'enabled')),
