@@ -6,6 +6,7 @@
     "headers": [{"source": "/mobile/**", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}],
     "rewrites": [
       {"source": "/review-auth", "function": {"functionId": "mobileAuthExchange", "region": "asia-northeast3"}},
+      {"source": "/sessions", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}},
       {"source": "/guest", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}},
       {"source": "/guest-api/**", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}}
     ],

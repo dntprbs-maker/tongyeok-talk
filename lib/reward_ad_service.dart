@@ -21,6 +21,7 @@ const _androidTestUnit = 'ca-app-pub-3940256099942544/5224354917';
 const _localBackend = String.fromEnvironment('TONGYEOK_REWARD_BACKEND');
 const _liveBackend =
     'https://asia-northeast3-tongyeok-talk-lab-20261024.cloudfunctions.net/rewardApi';
+const _hostedAppOrigin = 'https://tongyeok-talk-lab-20261024.web.app';
 bool get rewardAdsSupported => kIsWeb
     ? native_reward.supported
     : defaultTargetPlatform == TargetPlatform.android;
@@ -29,7 +30,11 @@ bool get effectiveRewardTestMode =>
 bool get rewardPreviewOnly =>
     rewardPlaybackTest || (kIsWeb && effectiveRewardTestMode);
 String get rewardBackend {
-  if (_localBackend.isEmpty) return _liveBackend;
+  if (_localBackend.isEmpty) {
+    return kIsWeb && Uri.base.origin == _hostedAppOrigin
+        ? _hostedAppOrigin
+        : _liveBackend;
+  }
   final uri = Uri.tryParse(_localBackend);
   if (kReleaseMode ||
       !rewardAdsTestMode ||
