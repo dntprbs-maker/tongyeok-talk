@@ -308,7 +308,32 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
         await _controller.goBack();
         return;
       }
-      await SystemNavigator.pop();
+      if (!mounted) return;
+      final (question, yes, no) = switch (Localizations.localeOf(
+        context,
+      ).languageCode) {
+        'mn' => ('Аппаас гарах уу?', 'Тийм', 'Үгүй'),
+        'en' => ('Exit Tongyeok Talk?', 'Yes', 'No'),
+        _ => ('앱을 종료하시겠습니까?', '예', '아니요'),
+      };
+      final exit = await showDialog<bool>(
+        context: context,
+        builder:
+            (dialogContext) => AlertDialog(
+              title: Text(question),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: Text(no),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: Text(yes),
+                ),
+              ],
+            ),
+      );
+      if (mounted && exit == true) await SystemNavigator.pop();
     } finally {
       _backBusy = false;
     }
