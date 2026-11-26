@@ -72,71 +72,62 @@ class _GuestRoomsListState extends State<GuestRoomsList> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _rooms,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(tr(context, 'guestConnectionError')),
+  Widget build(
+    BuildContext context,
+  ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: _rooms,
+    builder: (context, snapshot) {
+      if (snapshot.hasError) {
+        return Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(tr(context, 'guestConnectionError')),
+        );
+      }
+      final docs = snapshot.data?.docs ?? [];
+      for (final doc in docs) {
+        final d = doc.data();
+        if (d['archivedAt'] == null && (d['count'] as int? ?? 0) > 0) {
+          _sync(doc.id, '${d['updatedAt']}');
+        }
+      }
+      final now = DateTime.now();
+      final rooms =
+          docs
+              .where(
+                (d) => joinedGuestRoomExpiry(d.data())?.isAfter(now) == true,
+              )
+              .toList()
+            ..sort(
+              (a, b) => (b.data()['updatedAt'] as Timestamp).compareTo(
+                a.data()['updatedAt'] as Timestamp,
+              ),
             );
-          }
-          final docs = snapshot.data?.docs ?? [];
-          for (final doc in docs) {
-            final d = doc.data();
-            if (d['archivedAt'] == null && (d['count'] as int? ?? 0) > 0) {
-              _sync(doc.id, '${d['updatedAt']}');
-            }
-          }
-          final rooms =
-              docs
-                  .where(
-                    (d) =>
-                        ['waiting', 'active'].contains(d.data()['status']) &&
-                        (d.data()['expiresAt'] as Timestamp).toDate().isAfter(
-                          DateTime.now(),
-                        ),
-                  )
-                  .toList()
-                ..sort(
-                  (a, b) => (b.data()['updatedAt'] as Timestamp).compareTo(
-                    a.data()['updatedAt'] as Timestamp,
+      return Column(
+        children: [
+          if (_error != null)
+            Text(
+              tr(context, _error!),
+              style: const TextStyle(color: Colors.red),
+            ),
+          for (final doc in rooms)
+            ListTile(
+              leading: const CircleAvatar(
+                backgroundColor: Color(0xFFE2F2ED),
+                child: Icon(Icons.person_outline, color: guestChatColor),
+              ),
+              title: Text(doc.data()['guestName'] as String),
+              subtitle: const ChatKindBadge(guest: true),
+              trailing: const Icon(Icons.chevron_right, color: guestChatColor),
+              onTap:
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => GuestMemberChat(id: doc.id),
+                    ),
                   ),
-                );
-          return Column(
-            children: [
-              if (_error != null)
-                Text(
-                  tr(context, _error!),
-                  style: const TextStyle(color: Colors.red),
-                ),
-              for (final doc in rooms)
-                ListTile(
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFE2F2ED),
-                    child: Icon(Icons.person_outline, color: guestChatColor),
-                  ),
-                  title: Text(
-                    (doc.data()['guestName'] as String).isNotEmpty
-                        ? doc.data()['guestName'] as String
-                        : tr(context, 'guestWaiting'),
-                  ),
-                  subtitle: const ChatKindBadge(guest: true),
-                  trailing: const Icon(
-                    Icons.chevron_right,
-                    color: guestChatColor,
-                  ),
-                  onTap:
-                      () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => GuestMemberChat(id: doc.id),
-                        ),
-                      ),
-                ),
-            ],
-          );
-        },
+            ),
+        ],
       );
+    },
+  );
 }

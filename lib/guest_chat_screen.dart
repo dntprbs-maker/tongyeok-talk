@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +14,7 @@ import 'chat_kind.dart';
 import 'local_archive.dart';
 import 'past_chats_screen.dart';
 import 'message_bubble.dart';
+import 'read_receipts.dart';
 
 const _guestBackendOverride = String.fromEnvironment('TONGYEOK_GUEST_BACKEND');
 const _legacyGuestBackend =
@@ -48,6 +50,18 @@ Future<Map<String, dynamic>> guestApi(
 Map<String, dynamic> decodeGuestResponse(List<int> bytes) =>
     jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
 
+DateTime? joinedGuestRoomExpiry(Map<String, dynamic>? room) {
+  final name = room?['guestName'];
+  final expiry = room?['expiresAt'];
+  if (room?['status'] != 'active' ||
+      name is! String ||
+      name.trim().isEmpty ||
+      expiry is! Timestamp) {
+    return null;
+  }
+  return expiry.toDate();
+}
+
 String guestError(Object error) =>
     error is StateError && error.message == 'no_credit'
         ? 'creditNoBalance'
@@ -65,140 +79,238 @@ class GuestInviteScreen extends StatefulWidget {
   State<GuestInviteScreen> createState() => _GuestInviteScreenState();
 }
 
-class _GuestInviteScreenState extends State<GuestInviteScreen> {
-  late final Future<Map<String, dynamic>> _invite = guestApi('create', {});
+class _GuestInviteScreenState extends State<GuestInviteScreen> with RouteAware {
+  late final _ownerUid = FirebaseAuth.instance.currentUser!.uid;
+  late final _invite = _createInvite();
+  ModalRoute<void>? _route;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _roomUpdates;
+  String? _roomId;
+  DateTime? _joinedRoomExpiry;
+  bool _openingChat = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of<void>(context);
+    if (_route == route) return;
+    chatRouteObserver.unsubscribe(this);
+    _route = route;
+    if (route != null) chatRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPopNext() => scheduleMicrotask(_openJoinedChat);
+
+  @override
+  void dispose() {
+    chatRouteObserver.unsubscribe(this);
+    _roomUpdates?.cancel();
+    super.dispose();
+  }
+
+  Future<Map<String, dynamic>> _createInvite() async {
+    final ownerUid = _ownerUid;
+    final invite = await guestApi('create', {});
+    if (!mounted || FirebaseAuth.instance.currentUser?.uid != ownerUid) {
+      return invite;
+    }
+    final id = invite['id'] as String;
+    _roomId = id;
+    _roomUpdates = FirebaseFirestore.instance
+        .collection('guestRooms')
+        .doc(id)
+        .snapshots(includeMetadataChanges: true)
+        .listen(
+          (snapshot) {
+            final room = snapshot.data();
+            _joinedRoomExpiry =
+                !snapshot.metadata.isFromCache &&
+                        !snapshot.metadata.hasPendingWrites &&
+                        room?['owner'] == ownerUid &&
+                        room?['joinedAt'] is Timestamp
+                    ? joinedGuestRoomExpiry(room)
+                    : null;
+            _openJoinedChat();
+          },
+          onError: (Object _) {
+            _joinedRoomExpiry = null;
+          },
+        );
+    return invite;
+  }
+
+  void _openJoinedChat() {
+    final id = _roomId;
+    if (id != null && _joinedRoomExpiry?.isAfter(DateTime.now()) == true) {
+      _openChat(id);
+    }
+  }
+
+  void _openChat(String id) {
+    if (!mounted ||
+        _openingChat ||
+        _route?.isCurrent != true ||
+        FirebaseAuth.instance.currentUser?.uid != _ownerUid) {
+      return;
+    }
+    _openingChat = true;
+    _roomUpdates?.cancel();
+    _roomUpdates = null;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute<void>(builder: (_) => GuestMemberChat(id: id)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(tr(context, 'guestInvite'))),
-    body: FutureBuilder<Map<String, dynamic>>(
-      future: _invite,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(tr(context, guestError(snapshot.error!))),
-            ),
-          );
-        }
-        final invite = snapshot.data;
-        if (invite == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final id = invite['id'] as String,
-            link = '$guestBackend/guest?room=$id#invite=${invite['secret']}';
-        return ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              tr(context, 'guestInviteIntro'),
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 20),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  border: Border.all(color: guestChatColor),
-                  borderRadius: BorderRadius.circular(18),
+    body: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text(
+          '카메라로 QR을 찍거나 문자로 받은 초대 링크를 눌러 주세요.',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        const Text('이름을 입력하고 동의한 뒤 채팅창에 글을 써 주세요.'),
+        const SizedBox(height: 20),
+        FutureBuilder<Map<String, dynamic>>(
+          future: _invite,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(tr(context, guestError(snapshot.error!))),
                 ),
-                child: QrImageView(
-                  data: link,
-                  size: 230,
-                  backgroundColor: Colors.white,
-                  errorCorrectionLevel: QrErrorCorrectLevel.M,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(tr(context, 'guestQrHint'), textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: guestChatColor),
-              icon: const Icon(Icons.link),
-              label: Text(tr(context, 'guestShare')),
-              onPressed:
-                  () => showModalBottomSheet<void>(
-                    context: context,
-                    builder:
-                        (sheet) => SafeArea(
-                          child: Wrap(
-                            children: [
-                              ListTile(
-                                leading: const Icon(Icons.copy),
-                                title: Text(tr(context, 'guestCopy')),
-                                onTap: () async {
-                                  await Clipboard.setData(
-                                    ClipboardData(text: link),
-                                  );
-                                  if (sheet.mounted) Navigator.pop(sheet);
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          tr(context, 'guestCopied'),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                              ListTile(
-                                leading: const Icon(Icons.sms_outlined),
-                                title: Text(tr(context, 'guestSms')),
-                                onTap: () async {
-                                  Navigator.pop(sheet);
-                                  final ok = await launchUrl(
-                                    Uri(
-                                      scheme: 'sms',
-                                      query:
-                                          'body=${Uri.encodeComponent(link)}',
-                                    ),
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                  if (!ok && context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          tr(context, 'guestCopyFallback'),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                  ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.search),
-              label: Text(tr(context, 'findPeople')),
-              onPressed: () => Navigator.pushNamed(context, '/newConversation'),
-            ),
-            const SizedBox(height: 16),
-            _GuestNotice(text: tr(context, 'guestMemberNotice')),
-            Text(
-              tr(context, 'guestInviteExpiry'),
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.tonalIcon(
-              icon: const Icon(Icons.chat_outlined),
-              label: Text(tr(context, 'guestOpenChat')),
-              onPressed:
-                  () => Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => GuestMemberChat(id: id),
+              );
+            }
+            final invite = snapshot.data;
+            if (invite == null) {
+              return Column(
+                children: [
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(tr(context, 'guestInviteLoading')),
+                ],
+              );
+            }
+            final id = invite['id'] as String,
+                link =
+                    '$guestBackend/guest?room=$id#invite=${invite['secret']}';
+            final invitationText =
+                '통역톡 비회원 대화 초대입니다. 아래 링크를 열고 이름을 입력한 뒤, '
+                '동의하고 채팅창에 글을 써 주세요.\n$link';
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: guestChatColor),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: QrImageView(
+                      data: link,
+                      size: 230,
+                      backgroundColor: Colors.white,
+                      errorCorrectionLevel: QrErrorCorrectLevel.M,
                     ),
                   ),
-            ),
-          ],
-        );
-      },
+                ),
+                const SizedBox(height: 12),
+                const Text('회원가입 없이 대화할 수 있어요.', textAlign: TextAlign.center),
+                const SizedBox(height: 8),
+                Text(
+                  tr(context, 'guestAutoOpenHint'),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: guestChatColor,
+                  ),
+                  icon: const Icon(Icons.link),
+                  label: Text(tr(context, 'guestShare')),
+                  onPressed:
+                      () => showModalBottomSheet<void>(
+                        context: context,
+                        builder:
+                            (sheet) => SafeArea(
+                              child: Wrap(
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.copy),
+                                    title: Text(tr(context, 'guestCopy')),
+                                    onTap: () async {
+                                      await Clipboard.setData(
+                                        ClipboardData(text: invitationText),
+                                      );
+                                      if (sheet.mounted) Navigator.pop(sheet);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              tr(context, 'guestCopied'),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.sms_outlined),
+                                    title: Text(tr(context, 'guestSms')),
+                                    onTap: () async {
+                                      Navigator.pop(sheet);
+                                      final ok = await launchUrl(
+                                        Uri(
+                                          scheme: 'sms',
+                                          query:
+                                              'body=${Uri.encodeComponent(invitationText)}',
+                                        ),
+                                        mode: LaunchMode.externalApplication,
+                                      );
+                                      if (!ok && context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              tr(context, 'guestCopyFallback'),
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                      ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.search),
+                  label: Text(tr(context, 'findPeople')),
+                  onPressed:
+                      () => Navigator.pushNamed(context, '/newConversation'),
+                ),
+                const SizedBox(height: 16),
+                _GuestNotice(text: tr(context, 'guestMemberNotice')),
+                Text(
+                  tr(context, 'guestInviteExpiry'),
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
     ),
   );
 }
