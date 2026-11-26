@@ -21,7 +21,12 @@ service cloud.firestore {
    return signed() && exists(contactPath(request.auth.uid));
   }
   function socialAccount() {
-   return request.auth.token.firebase.sign_in_provider in ['google.com', 'apple.com'];
+   let firebase = request.auth.token.firebase;
+   let identities = firebase.get('identities', {});
+   return firebase.sign_in_provider in ['google.com', 'apple.com']
+    || (firebase.sign_in_provider == 'custom'
+     && (identities.get('apple.com', []).size() > 0
+      || identities.get('google.com', []).size() > 0));
   }
   function validNumber(number) {
    return number.matches('^(82(10[0-9]{8}|1[16789][0-9]{7,8}|2[0-9]{7,8}|[3-6][1-5][0-9]{7,8}|70[0-9]{8})|976[1-9][0-9]{7})$');

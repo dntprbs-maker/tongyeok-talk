@@ -61,3 +61,39 @@ test('social accounts must register a phone before being discoverable or chattin
     await env.cleanup();
   }
 });
+
+test('mobile app sessions can register only with a linked Apple or Google identity', async () => {
+  const env = await initializeTestEnvironment({
+    projectId: 'demo-tt-mobile-social',
+    firestore: {host: '127.0.0.1', port: 8088, rules: readFileSync(new URL('../firestore.rules', import.meta.url), 'utf8')},
+  });
+  try {
+    const register = async (uid, claims, number) => {
+      const db = env.authenticatedContext(uid, {firebase: claims}).firestore();
+      await assertSucceeds(setDoc(doc(db, 'users', uid), {
+        displayName: uid, preferredLanguage: 'Korean', createdAt: serverTimestamp(),
+      }));
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'users', uid, 'private', 'contact'), {
+        phoneE164: '+' + number, phoneVerified: false,
+      });
+      batch.set(doc(db, 'phoneDirectory', number), {uid});
+      return batch.commit();
+    };
+    await assertFails(register('review-only', {sign_in_provider: 'custom'}, '821011111101'));
+    await assertFails(register('no-apple', {
+      sign_in_provider: 'custom', identities: {'apple.com': []},
+    }, '821011111102'));
+    await assertFails(register('password-session', {
+      sign_in_provider: 'password', identities: {'apple.com': ['apple-account']},
+    }, '821011111103'));
+    await assertSucceeds(register('native-apple', {
+      sign_in_provider: 'custom', identities: {'apple.com': ['apple-account']},
+    }, '821011111104'));
+    await assertSucceeds(register('native-google', {
+      sign_in_provider: 'custom', identities: {'google.com': ['google-account']},
+    }, '821011111105'));
+  } finally {
+    await env.cleanup();
+  }
+});
