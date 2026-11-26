@@ -59,8 +59,13 @@ jobs:
           if [[ -n "$REQUESTED_BUILD_NUMBER" ]]; then
             [[ "$REQUESTED_BUILD_NUMBER" =~ ^3[0-9]{3}$ ]]
             build_number="$REQUESTED_BUILD_NUMBER"
-            build_name=1.0.1
-            ad_diagnostics=true
+            if [[ "$build_number" == 3005 ]]; then
+              build_name=1.0.3
+              ad_diagnostics=false
+            else
+              build_name=1.0.1
+              ad_diagnostics=true
+            fi
           else
             build_number="$((1000 + GITHUB_RUN_NUMBER))"
             build_name=1.0.0
@@ -106,6 +111,12 @@ jobs:
           info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
           info["UIRequiresFullScreen"] = True
           info["FlutterDeepLinkingEnabled"] = False
+          contacts_enabled = os.environ["APP_VARIANT"] == "web" and os.environ["SOCIAL_LOGIN"] == "true"
+          if contacts_enabled:
+              info["NSContactsUsageDescription"] = (
+                  "통역톡은 주소록 이름 자동 표시를 선택하면 대화 상대의 번호와 연락처를 이 기기에서 대조합니다. "
+                  "Таныг зөвшөөрвөл чаталсан хүний дугаарыг энэ төхөөрөмжийн харилцах жагсаалттай тулган нэрийг харуулна."
+              )
           if os.environ.get("NATIVE_PUSH") == "true":
               info["UIBackgroundModes"] = ["remote-notification"]
           info["ITSAppUsesNonExemptEncryption"] = False
@@ -197,7 +208,16 @@ jobs:
                 }
 
               """ + marker)
-          delegate.write_text(swift)
+          if contacts_enabled:
+              marker = "  func didInitializeImplicitFlutterEngine("
+              assert swift.count(marker) == 1
+              swift = swift.replace(marker, "  private var contactsBridge: ContactsBridge?\n\n" + marker)
+              swift = swift.replace(registration, registration + """
+                  contactsBridge = ContactsBridge(messenger: engineBridge.applicationRegistrar.messenger())
+              """)
+              contacts = Path(os.environ["GITHUB_WORKSPACE"]) / "tools" / "ios_contacts_bridge.swift"
+              swift += "\n" + contacts.read_text(encoding="utf-8")
+          delegate.write_text(swift, encoding="utf-8")
           PY
           flutter pub get
           if [[ "$APP_VARIANT" == web ]]; then

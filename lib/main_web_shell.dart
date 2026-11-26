@@ -83,7 +83,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   bool get _canPush =>
       !kIsWeb &&
       (_ios && _nativePushEnabled || _android && _androidBridgeEnabled);
-  bool get _canUseContacts => !kIsWeb && _android && _socialEnabled;
+  bool get _canUseContacts => !kIsWeb && (_android || _ios) && _socialEnabled;
   bool _isContactsPage(String? url) {
     final uri = Uri.tryParse(url ?? '');
     return uri != null && isTrustedTongyeokPage(uri) &&
