@@ -204,20 +204,40 @@ class _NewConversationScreenState extends State<NewConversationScreen> {
                     ),
                   ),
             ),
-            TextField(
-              key: const ValueKey('search-phone'),
-              controller: _phone,
-              autofocus:
-                  kIsWeb || defaultTargetPlatform != TargetPlatform.android,
-              inputFormatters: const [_PhoneSearchFormatter()],
-              enabled: !_busy,
-              keyboardType: TextInputType.phone,
-              onSubmitted: (_) => _find(),
-              decoration: InputDecoration(
-                labelText: tr(context, 'searchPhone'),
-                hintText: '1234-5678',
-                helperText: tr(context, 'phoneSearchHelp'),
-                helperMaxLines: 2,
+            const SizedBox(height: 20),
+            ExcludeSemantics(
+              child: Text(
+                tr(context, 'searchPhone'),
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Semantics(
+              label: tr(context, 'searchPhone'),
+              child: TextField(
+                key: const ValueKey('search-phone'),
+                controller: _phone,
+                autofocus:
+                    kIsWeb || defaultTargetPlatform != TargetPlatform.android,
+                inputFormatters: const [_PhoneSearchFormatter()],
+                enabled: !_busy,
+                keyboardType: TextInputType.phone,
+                onSubmitted: (_) => _find(),
+                decoration: const InputDecoration(
+                  hintText: '1234-5678',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 18,
+                  ),
+                  constraints: BoxConstraints(minHeight: 58),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              tr(context, 'phoneSearchHelp'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 20),
