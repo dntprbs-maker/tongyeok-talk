@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'app_language.dart';
+import 'account_switch_menu.dart';
 import 'push_service.dart';
 import 'session_sign_out.dart';
 import 'settings_screen.dart';
@@ -194,44 +195,15 @@ class _QaAccountSwitcherState extends State<QaAccountSwitcher> {
     builder: (context, snapshot) {
       final role = snapshot.data;
       if (role == null) return const SizedBox.shrink();
-      return PopupMenuButton<String>(
+      return AccountSwitchMenu(
         enabled: !_busy,
+        selected: role,
+        labels: {
+          for (final target in ['korean', 'mongolian', 'administrator'])
+            target: _label(target),
+        },
         tooltip: tr(context, 'qaSwitch'),
         onSelected: (target) => _select(role, target),
-        itemBuilder:
-            (_) => [
-              for (final target in ['korean', 'mongolian', 'administrator'])
-                PopupMenuItem(
-                  value: target,
-                  child: Row(
-                    children: [
-                      Icon(
-                        role == target ? Icons.check : Icons.person_outline,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_label(target)),
-                    ],
-                  ),
-                ),
-            ],
-        child: Material(
-          elevation: 3,
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(22),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.swap_horiz, size: 18),
-                const SizedBox(width: 4),
-                Text(_label(role)),
-                const Icon(Icons.arrow_drop_down, size: 18),
-              ],
-            ),
-          ),
-        ),
       );
     },
   );

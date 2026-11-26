@@ -106,6 +106,10 @@ class LanguagePicker extends StatelessWidget {
 }
 
 const Map<String, List<String>> messages = {
+  'signupLanguageLocked': [
+    '처음 가입할 때 선택한 언어는 가입 후 바꿀 수 없어요.',
+    'Анх бүртгүүлэхдээ сонгосон хэлийг дараа нь өөрчлөх боломжгүй.',
+  ],
   'interfaceLanguage': ['화면 언어', 'Дэлгэцийн хэл'],
   'interfaceLanguageHelp': [
     '화면 문구만 바뀌어요. 가입 언어와 번역권은 그대로예요.',

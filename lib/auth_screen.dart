@@ -160,6 +160,15 @@ class _AuthScreenState extends State<AuthScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const LanguagePicker(),
+                    if (!_reviewing && !_linking && (_signUp || _socialAvailable))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          tr(context, 'signupLanguageLocked'),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     const SizedBox(height: 24),
                     const BrandHeader(compact: true),
                     const SizedBox(height: 24),

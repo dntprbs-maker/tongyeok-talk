@@ -17,6 +17,7 @@ import 'reward_ads_screen.dart';
 import 'reward_platform.dart' as reward_platform;
 import 'guest_rooms_list.dart';
 import 'qa_account_switcher.dart';
+import 'account_switch_menu.dart';
 import 'brand.dart';
 import 'contact_aliases.dart';
 import 'contact_name_settings.dart';
@@ -238,7 +239,10 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Colors.white,
-    floatingActionButton: QaAccountSwitcher(user: currentUser),
+    floatingActionButton:
+        LanguageScope.of(context).displayLanguageAccount == currentUser.uid
+            ? DisplayLanguageSwitcher(uid: currentUser.uid)
+            : QaAccountSwitcher(user: currentUser),
     appBar: AppBar(
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,

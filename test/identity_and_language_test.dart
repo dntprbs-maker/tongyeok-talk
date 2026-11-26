@@ -81,6 +81,10 @@ void main() {
     await tester.tap(find.text('Бүртгүүлэх'));
     await tester.pumpAndSettle();
     expect(find.text('Хоч нэр'), findsOneWidget);
+    expect(
+      find.text('Анх бүртгүүлэхдээ сонгосон хэлийг дараа нь өөрчлөх боломжгүй.'),
+      findsOneWidget,
+    );
     expect(find.text('Утасны дугаар'), findsOneWidget);
     expect(find.text('Нууц үг'), findsOneWidget);
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
