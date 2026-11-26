@@ -9,9 +9,11 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_language.dart';
+import 'referral_invite.dart';
+import 'referral_sms_stub.dart'
+    if (dart.library.js_interop) 'referral_sms_web.dart'
+    as sms;
 
-const _referralEndpoint =
-    'https://asia-northeast3-tongyeok-talk-lab-20261024.cloudfunctions.net/rewardApi/referrals';
 const _pendingReferralKey = 'pending_referral';
 String? _pendingLinkCode;
 
@@ -23,7 +25,7 @@ Future<void> initializeReferralLinks() async {
   Future<void> capture(Uri? uri) async {
     if (uri?.scheme != 'tongyeoktalk' || uri?.host != 'referral') return;
     final code = uri?.queryParameters['ref'];
-    if (code == null || !RegExp(r'^[A-F0-9]{16}$').hasMatch(code)) return;
+    if (code == null || !isReferralCode(code)) return;
     _pendingLinkCode = code;
     await prefs.setString(_pendingReferralKey, code);
   }
@@ -47,7 +49,7 @@ Future<Map<String, dynamic>> referralRequest(
   final token = await FirebaseAuth.instance.currentUser!.getIdToken();
   final response = await http
       .post(
-        Uri.parse('$_referralEndpoint/$action'),
+        referralEndpoint.replace(path: '${referralEndpoint.path}/$action'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -165,7 +167,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   Future<void> _composeSms(bool mn, String code) async {
     final number = _phone.text.trim().replaceAll(RegExp(r'[\s().-]'), '');
-    if (!RegExp(r'^\+?[0-9]{8,15}$').hasMatch(number)) {
+    if (!isReferralPhone(number)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(mn ? 'Утасны дугаараа шалгана уу.' : '전화번호를 확인해 주세요.'),
@@ -174,22 +176,46 @@ class _ReferralScreenState extends State<ReferralScreen> {
       return;
     }
 
-    final link = Uri.parse(
-      _referralEndpoint,
-    ).replace(path: '/rewardApi/invite', queryParameters: {'ref': code});
     setState(() => _sending = true);
     try {
-      await const MethodChannel('tongyeok/invite').invokeMethod<void>(
-        'composeSms',
-        {'phone': number, 'body': '통역톡 · Орчуулагч Ток\n$link'},
-      );
-    } on PlatformException catch (_) {
-      if (mounted) _showSmsUnavailable(mn);
-    } on MissingPluginException catch (_) {
+      if (kIsWeb) {
+        final opened =
+            sms.referralSmsAvailable &&
+            await sms.composeReferralSms(number, code);
+        if (!opened && mounted) _showSmsUnavailable(mn);
+      } else {
+        await const MethodChannel('tongyeok/invite').invokeMethod<void>(
+          'composeSms',
+          {'phone': number, 'body': referralMessage(code)},
+        );
+      }
+    } catch (_) {
       if (mounted) _showSmsUnavailable(mn);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _copySms(bool mn, String code) async {
+    var copied = false;
+    try {
+      await Clipboard.setData(ClipboardData(text: referralMessage(code)));
+      copied = true;
+    } on PlatformException {
+      // Show a localized error if the clipboard is unavailable.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          copied
+              ? (mn
+                  ? 'Урилгыг хууллаа. Мессежийн аппад оруулаад илгээнэ үү.'
+                  : '초대 문자를 복사했어요. 문자 앱에 붙여 넣고 보내 주세요.')
+              : (mn ? 'Урилгыг хуулж чадсангүй.' : '초대 문자를 복사할 수 없어요.'),
+        ),
+      ),
+    );
   }
 
   void _showSmsUnavailable(bool mn) {
@@ -248,11 +274,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     icon: const Icon(Icons.sms_outlined),
                     label: Text(mn ? 'Мессежийн апп нээх' : '문자 앱 열기'),
                   ),
+                  if (kIsWeb && defaultTargetPlatform == TargetPlatform.iOS)
+                    TextButton(
+                      onPressed: () => _copySms(mn, data['code'] as String),
+                      child: Text(mn ? 'Урилга хуулах' : '초대 문자 복사'),
+                    ),
                   const SizedBox(height: 12),
                   Text(
                     mn
                         ? 'Мессежийн аппад зурвасаа шалгаад илгээнэ үү.'
-                        : '소개받은 사람이 문자 앱에서 내용을 확인하고 전송해 주세요.',
+                        : '문자 내용을 확인한 뒤 직접 보내 주세요.',
                   ),
                   const SizedBox(height: 16),
                   Text(

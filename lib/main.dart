@@ -95,7 +95,14 @@ class MyApp extends StatelessWidget {
                 '/recentConversations': (_) => RecentConversationsScreen(),
                 '/registerPhone': (_) => const RegisterPhoneScreen(),
                 '/newConversation': (_) => const NewConversationScreen(),
-                '/pastChats': (_) => const Scaffold(body: PastChats()),
+                '/pastChats':
+                    (context) => Scaffold(
+                      appBar: AppBar(
+                        leading: const BackButton(),
+                        title: Text(tr(context, 'pastChats')),
+                      ),
+                      body: const PastChats(),
+                    ),
                 '/settings': (_) => const SettingsScreen(),
               },
               theme: ThemeData(

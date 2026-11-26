@@ -686,7 +686,7 @@ const Map<String, List<String>> messages = {
     '이 기기에 저장된 대화를 검색할 수 있어요.',
     'Энэ төхөөрөмжид хадгалсан чатыг хайж болно.',
   ],
-  'noLocalHistory': ['저장된 대화가 없어요.', 'Хадгалсан 대conversation алга.'],
+  'noLocalHistory': ['저장된 대화가 없어요.', 'Хадгалсан чат алга.'],
   'archiveNoSearch': ['검색 결과가 없어요.', 'Хайлтын үр дүн алга.'],
   'archiveError': ['대화 기록을 불러오지 못했어요.', 'Чатын архивыг ачаалж чадсангүй.'],
   'savedReadOnly': [
