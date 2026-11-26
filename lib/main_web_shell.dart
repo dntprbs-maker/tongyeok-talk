@@ -22,6 +22,8 @@ import 'native_reward_bridge_script.dart';
 import 'native_social_login_bridge.dart';
 import 'native_social_login_device.dart';
 import 'native_contact_names.dart';
+import 'native_referral_sms.dart';
+import 'referral_invite.dart';
 
 void main() => runApp(
   const MaterialApp(
@@ -75,6 +77,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   bool _rewardBusy = false;
   bool _socialBusy = false;
   bool _backBusy = false;
+  bool _inviteBusy = false;
   bool get _android => defaultTargetPlatform == TargetPlatform.android;
   bool get _ios => defaultTargetPlatform == TargetPlatform.iOS;
   bool get _canReward =>
@@ -86,9 +89,12 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   bool get _canUseContacts => !kIsWeb && (_android || _ios) && _socialEnabled;
   bool _isContactsPage(String? url) {
     final uri = Uri.tryParse(url ?? '');
-    return uri != null && isTrustedTongyeokPage(uri) &&
-        (uri.host == 'tongyeok-talk-lab-20261024.web.app' || socialLocalPreview);
+    return uri != null &&
+        isTrustedTongyeokPage(uri) &&
+        (uri.host == 'tongyeok-talk-lab-20261024.web.app' ||
+            socialLocalPreview);
   }
+
   @override
   void initState() {
     super.initState();
@@ -96,9 +102,18 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
         WebViewController()
           ..setJavaScriptMode(JavaScriptMode.unrestricted)
           ..addJavaScriptChannel(
+            'TongyeokNativeReferralSms',
+            onMessageReceived: (message) {
+              if (_ios && _socialEnabled) {
+                _handleReferralSms(message.message, _pageNonce);
+              }
+            },
+          )
+          ..addJavaScriptChannel(
             'TongyeokNativeContactNames',
             onMessageReceived: (message) {
-              if (_canUseContacts) _handleContactNames(message.message, _pageNonce);
+              if (_canUseContacts)
+                _handleContactNames(message.message, _pageNonce);
             },
           )
           ..addJavaScriptChannel(
@@ -153,8 +168,17 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
               },
               onPageFinished: (url) async {
                 final trusted = isTrustedTongyeokPage(Uri.parse(url));
+                if (_ios &&
+                    _socialEnabled &&
+                    isReferralSmsPage(Uri.tryParse(url))) {
+                  await _controller.runJavaScript(
+                    nativeReferralSmsScript(_pageNonce),
+                  );
+                }
                 if (_canUseContacts && _isContactsPage(url)) {
-                  await _controller.runJavaScript(nativeContactNamesScript(_pageNonce));
+                  await _controller.runJavaScript(
+                    nativeContactNamesScript(_pageNonce),
+                  );
                 }
                 if (_socialEnabled && trusted) {
                   await _controller.runJavaScript(
@@ -190,10 +214,44 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     _openPublishedApp();
   }
 
+  Future<void> _handleReferralSms(String raw, String nonce) async {
+    final page = Uri.tryParse(await _controller.currentUrl() ?? '');
+    final request = NativeReferralSmsRequest.parse(raw, nonce, page);
+    if (request == null || !mounted || nonce != _pageNonce) return;
+    var opened = false;
+    if (!_inviteBusy) {
+      _inviteBusy = true;
+      try {
+        await const MethodChannel('tongyeok/invite').invokeMethod<void>(
+          'composeSms',
+          {'phone': request.phone, 'body': referralMessage(request.code)},
+        );
+        opened = true;
+      } on PlatformException {
+        // The web screen can still offer to copy the invitation.
+      } on MissingPluginException {
+        // A build without the native composer can still copy the invitation.
+      } finally {
+        _inviteBusy = false;
+      }
+    }
+    final current = Uri.tryParse(await _controller.currentUrl() ?? '');
+    if (!mounted || nonce != _pageNonce || !isReferralSmsPage(current)) {
+      return;
+    }
+    await _controller.runJavaScript(
+      'window.__tongyeokReferralSmsResult?.('
+      '${jsonEncode(nonce)},${request.id},$opened);',
+    );
+  }
+
   Future<void> _handleContactNames(String raw, String nonce) async {
-    if (!mounted || _contactsBusy || nonce.isEmpty || raw.length > 14000) return;
+    if (!mounted || _contactsBusy || nonce.isEmpty || raw.length > 14000)
+      return;
     if (!_isContactsPage(await _controller.currentUrl()) ||
-        !mounted || _contactsBusy || nonce != _pageNonce) {
+        !mounted ||
+        _contactsBusy ||
+        nonce != _pageNonce) {
       return;
     }
     Map<String, dynamic> request;
@@ -203,7 +261,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       return;
     }
     final id = request['id'];
-    if (request['nonce'] != nonce || id is! String ||
+    if (request['nonce'] != nonce ||
+        id is! String ||
         !RegExp(r'^\d{1,10}$').hasMatch(id)) {
       return;
     }
@@ -216,8 +275,10 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     } finally {
       _contactsBusy = false;
     }
-    if (!mounted || nonce != _pageNonce ||
-        !_isContactsPage(await _controller.currentUrl()) || nonce != _pageNonce) {
+    if (!mounted ||
+        nonce != _pageNonce ||
+        !_isContactsPage(await _controller.currentUrl()) ||
+        nonce != _pageNonce) {
       return;
     }
     await _controller.runJavaScript(
