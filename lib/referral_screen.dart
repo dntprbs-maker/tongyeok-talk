@@ -68,7 +68,7 @@ Future<Map<String, dynamic>> referralRequest(
 String referralLabel(BuildContext context) => tr(context, 'friendInvite');
 
 String referralRegistrationError(BuildContext context, String error) {
-  final mn = LanguageScope.of(context).code == 'mn';
+  final mn = LanguageScope.of(context).displayCode == 'mn';
   return switch (error) {
     'invalid_referral_code' =>
       mn ? 'Урилгын холбоосоо шалгана уу.' : '초대 링크를 확인해 주세요.',
@@ -83,7 +83,7 @@ String referralRegistrationError(BuildContext context, String error) {
 }
 
 String referralRules(BuildContext context) =>
-    LanguageScope.of(context).code == 'mn'
+    LanguageScope.of(context).displayCode == 'mn'
         ? 'Урилгаар бүртгүүлсэн хүн 30 хоногийн дараа, 10 өөр өдөр зурвас илгээсэн бол түүнийг урьсан гишүүнд урамшуулал автоматаар олгоно. Багийн ахлагчид 5 хоног, багийн гишүүнд 500 өгүүлбэрийн орчуулгын эрх олгоно.'
         : '소개받은 사람이 가입 후 30일이 지나고 서로 다른 10일에 메시지를 보내면, 소개한 팀장에게 이용권 5일, 소개한 팀원에게 번역권 500문장을 자동 지급해요.';
 
@@ -98,7 +98,7 @@ Future<void> showReferralAnnouncement(BuildContext context, String uid) async {
   final details = await showDialog<bool>(
     context: context,
     builder: (dialog) {
-      final mn = LanguageScope.of(dialog).code == 'mn';
+      final mn = LanguageScope.of(dialog).displayCode == 'mn';
       return Dialog(
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         clipBehavior: Clip.antiAlias,
@@ -230,7 +230,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mn = LanguageScope.of(context).code == 'mn';
+    final mn = LanguageScope.of(context).displayCode == 'mn';
     return Scaffold(
       appBar: AppBar(title: Text(referralLabel(context))),
       body: ListView(

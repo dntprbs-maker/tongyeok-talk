@@ -29,6 +29,9 @@ Future<void> main() async {
   await initializeDateFormatting('ko');
   await initializeDateFormatting('mn');
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseAuth.instance.authStateChanges().listen((user) {
+    AppLanguage.instance.keepAccountLanguageFor(user?.uid);
+  });
   var user = await FirebaseAuth.instance.authStateChanges().first;
   if (user != null &&
       !(await FirebaseFirestore.instance
@@ -67,7 +70,7 @@ class MyApp extends StatelessWidget {
               navigatorObservers: [chatRouteObserver],
               title: AppLanguage.instance.text('app'),
               debugShowCheckedModeBanner: false,
-              locale: Locale(AppLanguage.instance.code),
+              locale: Locale(AppLanguage.instance.displayCode),
               supportedLocales: const [Locale('ko'), Locale('mn')],
               localizationsDelegates: GlobalMaterialLocalizations.delegates,
               onGenerateInitialRoutes:

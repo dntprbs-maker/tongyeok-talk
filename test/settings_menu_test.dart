@@ -14,6 +14,7 @@ void main() {
     final language = AppLanguage.instance;
     expect(find.text(language.text('account')), findsOneWidget);
     expect(find.text(language.text('friendInvite')), findsOneWidget);
+    expect(find.text(language.text('interfaceLanguage')), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
 
     await tester.tap(find.text(language.text('messageDisplay')));
@@ -25,5 +26,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.byType(SwitchListTile), findsNothing);
+  });
+
+  testWidgets('allowed account switches the settings labels only', (
+    tester,
+  ) async {
+    final language = AppLanguage.instance;
+    addTearDown(() => language.keepAccountLanguageFor(null));
+    language.useAccountLanguage('mado', 'mn');
+    await tester.pumpWidget(
+      LanguageScope(child: const MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Дэлгэцийн хэл'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('한국어'));
+    await tester.pumpAndSettle();
+    expect(find.text('화면 언어'), findsOneWidget);
+    expect(language.profileLanguage, 'Mongolian');
   });
 }

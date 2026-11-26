@@ -128,7 +128,24 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
       FirebaseFirestore.instance
           .collection('users')
           .doc(currentUser.uid)
-          .snapshots();
+          .snapshots()
+          .map((snapshot) {
+            if (FirebaseAuth.instance.currentUser?.uid != currentUser.uid) {
+              return snapshot;
+            }
+            final profile = snapshot.data();
+            final language = profile?['preferredLanguage'];
+            if (profile?['canPickDisplayLanguage'] == true &&
+                (language == 'Korean' || language == 'Mongolian')) {
+              AppLanguage.instance.useAccountLanguage(
+                currentUser.uid,
+                language == 'Mongolian' ? 'mn' : 'ko',
+              );
+            } else {
+              AppLanguage.instance.keepAccountLanguageFor(null);
+            }
+            return snapshot;
+          });
 
   Widget _watchAdsButton() => FilledButton.icon(
     icon: const Icon(Icons.play_arrow_rounded, size: 18),

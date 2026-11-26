@@ -5,12 +5,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AppLanguage extends ChangeNotifier {
   static final instance = AppLanguage();
   String _code = 'ko';
-  String get code => _code;
-  String get profileLanguage => _code == 'mn' ? 'Mongolian' : 'Korean';
+  String? _displayAccount;
+  String? _accountLanguage;
+  String? _displayOverride;
+  SharedPreferences? _preferences;
+  String get code => _accountLanguage ?? _code;
+  String get displayCode => _displayOverride ?? code;
+  String? get displayLanguageAccount => _displayAccount;
+  String get profileLanguage => code == 'mn' ? 'Mongolian' : 'Korean';
   Future<void> initialize() async {
-    final saved = (await SharedPreferences.getInstance()).getString(
-      'tongyeok.language',
-    );
+    _preferences = await SharedPreferences.getInstance();
+    final saved = _preferences!.getString('tongyeok.language');
     _code = saved == 'mn' ? 'mn' : 'ko';
   }
 
@@ -24,10 +29,40 @@ class AppLanguage extends ChangeNotifier {
     );
   }
 
+  void useAccountLanguage(String uid, String code) {
+    if (_displayAccount == uid && _accountLanguage == code) return;
+    if (_displayAccount != uid) {
+      final saved = _preferences?.getString('tongyeok.displayLanguage.$uid');
+      _displayOverride = saved == 'ko' || saved == 'mn' ? saved : null;
+    }
+    _displayAccount = uid;
+    _accountLanguage = code;
+    notifyListeners();
+  }
+
+  Future<void> selectDisplayLanguage(String uid, String code) async {
+    if (_displayAccount != uid ||
+        (code != 'ko' && code != 'mn') ||
+        displayCode == code) {
+      return;
+    }
+    _displayOverride = code;
+    notifyListeners();
+    await _preferences?.setString('tongyeok.displayLanguage.$uid', code);
+  }
+
+  void keepAccountLanguageFor(String? currentUid) {
+    if (_displayAccount == null || _displayAccount == currentUid) return;
+    _displayAccount = null;
+    _accountLanguage = null;
+    _displayOverride = null;
+    notifyListeners();
+  }
+
   String text(String key, [Map<String, String> values = const {}]) {
     final pair = messages[key];
     assert(pair != null, 'Missing translation: $key');
-    var text = pair?[_code == 'mn' ? 1 : 0] ?? key;
+    var text = pair?[displayCode == 'mn' ? 1 : 0] ?? key;
     for (final item in values.entries) {
       text = text.replaceAll('{${item.key}}', item.value);
     }
@@ -71,6 +106,11 @@ class LanguagePicker extends StatelessWidget {
 }
 
 const Map<String, List<String>> messages = {
+  'interfaceLanguage': ['화면 언어', 'Дэлгэцийн хэл'],
+  'interfaceLanguageHelp': [
+    '화면 문구만 바뀌어요. 가입 언어와 번역권은 그대로예요.',
+    'Зөвхөн дэлгэцийн бичвэр өөрчлөгдөнө. Бүртгэлийн хэл, орчуулгын эрх хэвээр үлдэнэ.',
+  ],
   'creditNotActive': [
     '이용권은 준비 중이에요. 기존 대화의 번역은 그대로 이용할 수 있어요.',
     'Орчуулгын эрхийн систем бэлтгэгдэж байна. Одоогийн чатын орчуулгыг хэвийн ашиглаж болно.',
@@ -290,12 +330,27 @@ const Map<String, List<String>> messages = {
   'settings': ['설정', 'Тохиргоо'],
   'contactAliasEdit': ['상대방 별칭 설정', 'Харилцагчийн хоч нэр'],
   'contactNamesSettings': ['주소록 이름 표시', 'Харилцах жагсаалтын нэр'],
-  'contactNamesOptional': ['원하는 항목만 켜세요. 둘 다 꺼도 대화할 수 있어요.', 'Хүссэн тохиргоогоо асаагаарай. Хоёуланг нь унтраасан ч чатлаж болно.'],
+  'contactNamesOptional': [
+    '원하는 항목만 켜세요. 둘 다 꺼도 대화할 수 있어요.',
+    'Хүссэн тохиргоогоо асаагаарай. Хоёуланг нь унтраасан ч чатлаж болно.',
+  ],
   'contactNamesUse': ['내가 저장한 이름으로 보기', 'Хадгалсан нэрээр нь харах'],
-  'contactNamesUseHelp': ['상대 번호가 내 주소록에 있으면 내가 저장한 이름이 보여요. 주소록은 이 휴대폰에서만 확인해요.', 'Чаталж буй хүний дугаар таны харилцах жагсаалтад байвал таны хадгалсан нэр харагдана. Жагсаалтыг зөвхөн энэ утсан дээр шалгана.'],
-  'contactNamesShare': ['상대도 저장한 이름으로 보기', 'Нөгөө хүнд хадгалсан нэрээр нь харахыг зөвшөөрөх'],
-  'contactNamesShareHelp': ['내가 메시지를 보낸 1대1 대화 상대의 앱에 내 등록 번호를 보내요. 상대 앱은 주소록에서 내 이름을 찾는 데 이 번호를 써요. 언제든 끌 수 있어요.', 'Таны мессеж бичсэн ганцаарчилсан чатын хүний аппад бүртгүүлсэн дугаараа илгээнэ. Нөгөө хүний апп энэ дугаараар таны нэрийг жагсаалтаасаа хайна. Хүссэн үедээ унтрааж болно.'],
-  'contactNamesDenied': ['연락처 권한이 꺼져 있어요. 휴대폰 설정에서 권한을 켜거나 대화방에서 연락처를 한 명씩 선택할 수 있어요.', 'Харилцах жагсаалтын зөвшөөрөл унтраалттай. Утасны тохиргооноос зөвшөөрөх эсвэл чатад нэг харилцагч сонгож болно.'],
+  'contactNamesUseHelp': [
+    '상대 번호가 내 주소록에 있으면 내가 저장한 이름이 보여요. 주소록은 이 휴대폰에서만 확인해요.',
+    'Чаталж буй хүний дугаар таны харилцах жагсаалтад байвал таны хадгалсан нэр харагдана. Жагсаалтыг зөвхөн энэ утсан дээр шалгана.',
+  ],
+  'contactNamesShare': [
+    '상대도 저장한 이름으로 보기',
+    'Нөгөө хүнд хадгалсан нэрээр нь харахыг зөвшөөрөх',
+  ],
+  'contactNamesShareHelp': [
+    '내가 메시지를 보낸 1대1 대화 상대의 앱에 내 등록 번호를 보내요. 상대 앱은 주소록에서 내 이름을 찾는 데 이 번호를 써요. 언제든 끌 수 있어요.',
+    'Таны мессеж бичсэн ганцаарчилсан чатын хүний аппад бүртгүүлсэн дугаараа илгээнэ. Нөгөө хүний апп энэ дугаараар таны нэрийг жагсаалтаасаа хайна. Хүссэн үедээ унтрааж болно.',
+  ],
+  'contactNamesDenied': [
+    '연락처 권한이 꺼져 있어요. 휴대폰 설정에서 권한을 켜거나 대화방에서 연락처를 한 명씩 선택할 수 있어요.',
+    'Харилцах жагсаалтын зөвшөөрөл унтраалттай. Утасны тохиргооноос зөвшөөрөх эсвэл чатад нэг харилцагч сонгож болно.',
+  ],
   'contactNamesPick': ['주소록에서 이름 선택', 'Харилцах жагсаалтаас нэр сонгох'],
   'contactNamesClear': ['주소록 연결 해제', 'Харилцах жагсаалтын холбоосыг арилгах'],
   'contactAlias': ['별칭', 'Хоч нэр'],
@@ -303,8 +358,14 @@ const Map<String, List<String>> messages = {
   'contactAliasPrivate': ['별칭은 내 화면에만 보입니다.', 'Хоч нэр зөвхөн танд харагдана.'],
   'contactAliasRemove': ['별칭 지우기', 'Хоч нэр арилгах'],
   'contactAliasSave': ['저장', 'Хадгалах'],
-  'contactAliasInvalid': ['별칭을 1~60자로 입력해 주세요.', 'Хоч нэрийг 1–60 тэмдэгтээр оруулна уу.'],
-  'contactAliasSaveError': ['별칭을 저장하지 못했습니다. 다시 시도해 주세요.', 'Хоч нэрийг хадгалж чадсангүй. Дахин оролдоно уу.'],
+  'contactAliasInvalid': [
+    '별칭을 1~60자로 입력해 주세요.',
+    'Хоч нэрийг 1–60 тэмдэгтээр оруулна уу.',
+  ],
+  'contactAliasSaveError': [
+    '별칭을 저장하지 못했습니다. 다시 시도해 주세요.',
+    'Хоч нэрийг хадгалж чадсангүй. Дахин оролдоно уу.',
+  ],
   'qaSwitch': ['검수 계정 전환', 'Туршилтын бүртгэл солих'],
   'qaKorean': ['한국어 검수', 'Солонгос хэлний туршилт'],
   'qaMongolian': ['몽골어 검수', 'Монгол хэлний туршилт'],

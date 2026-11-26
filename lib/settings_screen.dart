@@ -321,6 +321,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             _item(Icons.person_outline, tr(context, 'account'), _openAccount),
+            _screenLanguageOption(),
             if (androidContactsAvailable)
               _item(Icons.contacts_outlined, tr(context, 'contactNamesSettings'), () async {
                 final user = FirebaseAuth.instance.currentUser;
@@ -375,6 +376,52 @@ class _SettingsScreenState extends State<SettingsScreen>
     trailing: const Icon(Icons.chevron_right),
     onTap: action,
   );
+
+  Widget _screenLanguageOption() {
+    final uid = LanguageScope.of(context).displayLanguageAccount;
+    if (uid == null) return const SizedBox.shrink();
+    return _item(
+      Icons.language,
+      tr(context, 'interfaceLanguage'),
+      () => _showDetails(
+        tr(context, 'interfaceLanguage'),
+        _InterfaceLanguageOptions(uid: uid),
+      ),
+    );
+  }
+}
+
+class _InterfaceLanguageOptions extends StatelessWidget {
+  const _InterfaceLanguageOptions({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context) {
+    final language = LanguageScope.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(tr(context, 'interfaceLanguageHelp')),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final item in const {'ko': '한국어', 'mn': 'Монгол хэл'}.entries)
+              ChoiceChip(
+                label: Text(item.value),
+                selected: language.displayCode == item.key,
+                onSelected: (_) async {
+                  await language.selectDisplayLanguage(uid, item.key);
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 /// iPhone/iPad offers enabling only; permission remains under iOS control.
