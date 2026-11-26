@@ -19,6 +19,9 @@ import 'guest_rooms_list.dart';
 import 'qa_account_switcher.dart';
 import 'brand.dart';
 import 'contact_aliases.dart';
+import 'contact_name_settings.dart';
+import 'contact_names.dart';
+import 'contact_names_platform.dart';
 
 import 'package:intl/intl.dart';
 import 'referral_screen.dart';
@@ -30,14 +33,23 @@ class RecentConversationsScreen extends StatefulWidget {
       _RecentConversationsScreenState();
 }
 
-class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
+class _RecentConversationsScreenState extends State<RecentConversationsScreen>
+    with WidgetsBindingObserver {
   final currentUser = FirebaseAuth.instance.currentUser!;
   StreamSubscription<Map<String, String>>? _aliasSubscription;
   Map<String, String> _aliases = const {};
+  late final _contactNames = ContactNames.forAccount(currentUser.uid);
+  late final VoidCallback _stopContactReadyListener;
+  Timer? _contactRefresh;
+  bool _contactReady = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _contactNames.addListener(_contactNamesChanged);
+    _stopContactReadyListener = onAndroidContactsReady(_setupContactNames);
+    if (_contactNames.available) _setupContactNames();
     _aliasSubscription = ContactAliases(currentUser.uid).watchAll().listen(
       (aliases) {
         if (mounted) setState(() => _aliases = aliases);
@@ -49,9 +61,53 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
     _stopRewardListener = reward_platform.listenAvailability(() {
       if (mounted) setState(() {});
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) showReferralAnnouncement(context, currentUser.uid);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      if (_contactNames.available) await _offerContactSetup();
+      if (!mounted) return;
+      await showReferralAnnouncement(context, currentUser.uid);
+      if (mounted) await _offerContactSetup();
     });
+  }
+
+  void _contactNamesChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _setupContactNames() {
+    if (!mounted || _contactReady) return;
+    _contactReady = true;
+    _contactRefresh = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => _contactNames.refresh(),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _offerContactSetup());
+  }
+
+  bool _offeringContacts = false;
+  Future<void> _offerContactSetup() async {
+    if (!mounted || _offeringContacts || !_contactNames.available) return;
+    _offeringContacts = true;
+    try {
+      if (!_contactNames.initialized) await _contactNames.initialize();
+      if (await _contactNames.needsSetup && mounted) {
+        if (ModalRoute.of(context)?.isCurrent != true) return;
+        await showContactNameSettings(context, _contactNames);
+      }
+      await _contactNames.refresh();
+    } catch (_) {
+      // Contact naming is optional. Leave the chat list usable.
+    } finally {
+      _offeringContacts = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _offerContactSetup();
+      _contactNames.refresh();
+    }
   }
 
   final _names = <String, Future<Map<String, dynamic>?>>{};
@@ -59,6 +115,10 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
   late final void Function() _stopRewardListener;
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopContactReadyListener();
+    _contactRefresh?.cancel();
+    _contactNames.removeListener(_contactNamesChanged);
     _aliasSubscription?.cancel();
     _stopRewardListener();
     super.dispose();
@@ -247,6 +307,24 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                       child: Center(child: CircularProgressIndicator()),
                     );
                   }
+                  if (_contactNames.available) {
+                    final rooms = <String>[];
+                    final peers = <String>{};
+                    for (final room in snapshot.data!.docs) {
+                      final peer = directChatPeer(room.data(), currentUser.uid);
+                      if (peer != null) {
+                        rooms.add(room.id);
+                        peers.add(peer);
+                      }
+                    }
+                    rooms.sort();
+                    final orderedPeers = peers.toList()..sort();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      _contactNames.loadManualNames(orderedPeers);
+                      _contactNames.setRooms(rooms);
+                    });
+                  }
                   if (snapshot.data!.docs.isEmpty) {
                     return SliverPadding(
                       padding: const EdgeInsets.all(20),
@@ -308,7 +386,9 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen> {
                             final original =
                                 name.data ?? tr(context, 'unknownUser');
                             final peer = directChatPeer(data, currentUser.uid);
-                            final label = _aliases[peer] ?? original;
+                            final label = _aliases[peer] ??
+                                (peer == null ? null : _contactNames.name(peer)) ??
+                                original;
                             return Container(
                               decoration: const BoxDecoration(
                                 border: Border(

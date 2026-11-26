@@ -14,6 +14,7 @@ import 'safety_controls.dart';
 import 'local_archive.dart';
 import 'reward_ads_screen.dart';
 import 'contact_aliases.dart';
+import 'contact_names.dart';
 
 class ChatScreen extends StatefulWidget {
   final String conversationId;
@@ -35,6 +36,7 @@ class ChatScreenState extends State<ChatScreen>
   final ScrollController _scrollController = ScrollController();
   final User _currentUser = FirebaseAuth.instance.currentUser!;
   late final _aliases = ContactAliases(_currentUser.uid);
+  late final _contactNames = ContactNames.forAccount(_currentUser.uid);
   Stream<String?>? _aliasStream;
   String? _peerUid, _peerOriginalName;
 
@@ -646,11 +648,13 @@ class ChatScreenState extends State<ChatScreen>
       maxLines: 1,
     );
     if (peer == null) return name(original);
-    return StreamBuilder<String?>(
-      stream: _aliasStream,
-      builder: (context, snapshot) => Row(
+    return ListenableBuilder(
+      listenable: _contactNames,
+      builder: (context, _) => StreamBuilder<String?>(
+        stream: _aliasStream,
+        builder: (context, snapshot) => Row(
         children: [
-          Expanded(child: name(snapshot.data ?? original)),
+          Expanded(child: name(snapshot.data ?? _contactNames.name(peer) ?? original)),
           IconButton(
             tooltip: tr(context, 'contactAliasEdit'),
             icon: const Icon(Icons.edit_outlined, size: 19),
@@ -664,10 +668,13 @@ class ChatScreenState extends State<ChatScreen>
                     original: original,
                     alias: snapshot.data,
                     onSave: (alias) => _aliases.update(peer, alias),
+                    onPickContact: _contactNames.available ? () => _contactNames.pick(peer) : null,
+                    onClearContact: _contactNames.hasManual(peer) ? () => _contactNames.clear(peer) : null,
                   ),
                 ),
           ),
         ],
+        ),
       ),
     );
   }

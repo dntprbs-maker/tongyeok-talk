@@ -10,6 +10,9 @@ import 'push_platform.dart' as platform;
 import 'chat_display_preferences.dart';
 import 'account_deletion_screen.dart';
 import 'session_sign_out.dart';
+import 'contact_name_settings.dart';
+import 'contact_names.dart';
+import 'contact_names_platform.dart';
 
 class SettingsScreen extends StatefulWidget {
   final bool showNotifications;
@@ -318,6 +321,14 @@ class _SettingsScreenState extends State<SettingsScreen>
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
             _item(Icons.person_outline, tr(context, 'account'), _openAccount),
+            if (androidContactsAvailable)
+              _item(Icons.contacts_outlined, tr(context, 'contactNamesSettings'), () async {
+                final user = FirebaseAuth.instance.currentUser;
+                if (user == null) return;
+                final contacts = ContactNames.forAccount(user.uid);
+                if (!contacts.initialized) await contacts.initialize();
+                if (context.mounted) await showContactNameSettings(context, contacts);
+              }),
             _item(
               Icons.card_giftcard_outlined,
               referralLabel(context),

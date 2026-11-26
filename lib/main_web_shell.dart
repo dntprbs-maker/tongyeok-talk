@@ -21,6 +21,7 @@ import 'native_reward_bridge_protocol.dart';
 import 'native_reward_bridge_script.dart';
 import 'native_social_login_bridge.dart';
 import 'native_social_login_device.dart';
+import 'native_contact_names.dart';
 
 void main() => runApp(
   const MaterialApp(
@@ -69,6 +70,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   int _queuedPushRequests = 0;
   final _rewardDevice = NativeRewardBridgeDevice();
   final _socialDevice = NativeSocialLoginDevice();
+  final _contactNames = NativeContactNames();
+  bool _contactsBusy = false;
   bool _rewardBusy = false;
   bool _socialBusy = false;
   bool _backBusy = false;
@@ -80,12 +83,24 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   bool get _canPush =>
       !kIsWeb &&
       (_ios && _nativePushEnabled || _android && _androidBridgeEnabled);
+  bool get _canUseContacts => !kIsWeb && _android && _socialEnabled;
+  bool _isContactsPage(String? url) {
+    final uri = Uri.tryParse(url ?? '');
+    return uri != null && isTrustedTongyeokPage(uri) &&
+        (uri.host == 'tongyeok-talk-lab-20261024.web.app' || socialLocalPreview);
+  }
   @override
   void initState() {
     super.initState();
     _controller =
         WebViewController()
           ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..addJavaScriptChannel(
+            'TongyeokNativeContactNames',
+            onMessageReceived: (message) {
+              if (_canUseContacts) _handleContactNames(message.message, _pageNonce);
+            },
+          )
           ..addJavaScriptChannel(
             'TongyeokNativeSocialLogin',
             onMessageReceived: (message) {
@@ -138,6 +153,9 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
               },
               onPageFinished: (url) async {
                 final trusted = isTrustedTongyeokPage(Uri.parse(url));
+                if (_canUseContacts && _isContactsPage(url)) {
+                  await _controller.runJavaScript(nativeContactNamesScript(_pageNonce));
+                }
                 if (_socialEnabled && trusted) {
                   await _controller.runJavaScript(
                     nativeSocialLoginScript(_pageNonce),
@@ -170,6 +188,42 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             ),
           );
     _openPublishedApp();
+  }
+
+  Future<void> _handleContactNames(String raw, String nonce) async {
+    if (!mounted || _contactsBusy || nonce.isEmpty || raw.length > 14000) return;
+    if (!_isContactsPage(await _controller.currentUrl()) ||
+        !mounted || _contactsBusy || nonce != _pageNonce) {
+      return;
+    }
+    Map<String, dynamic> request;
+    try {
+      request = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+    final id = request['id'];
+    if (request['nonce'] != nonce || id is! String ||
+        !RegExp(r'^\d{1,10}$').hasMatch(id)) {
+      return;
+    }
+    _contactsBusy = true;
+    Object? result;
+    try {
+      result = await _contactNames.request(request);
+    } catch (_) {
+      // Neither account tokens nor contact data belong in diagnostics.
+    } finally {
+      _contactsBusy = false;
+    }
+    if (!mounted || nonce != _pageNonce ||
+        !_isContactsPage(await _controller.currentUrl()) || nonce != _pageNonce) {
+      return;
+    }
+    await _controller.runJavaScript(
+      'window.__tongyeokContactNamesResult?.('
+      '${jsonEncode(nonce)},${jsonEncode(id)},${jsonEncode(result)});',
+    );
   }
 
   Future<void> _handleSocial(String raw, String nonce) async {

@@ -77,6 +77,12 @@ service cloud.firestore {
   }
   // Names are readable by signed-in chat users; no global profile/phone listing.
   match /users/{uid} {
+   match /private/contactMatchConsent {
+    allow get, delete: if signed() && request.auth.uid == uid;
+    allow create, update: if signed() && request.auth.uid == uid
+     && request.resource.data.keys().hasOnly(['enabled'])
+     && request.resource.data.enabled is bool;
+   }
    match /contactAliases/{peer} {
     allow get, list, delete: if signed() && request.auth.uid == uid;
     allow create, update: if signed() && request.auth.uid == uid && uid != peer

@@ -35,6 +35,15 @@ test('contact aliases are private, independent of profile names, and removable',
     assert.equal((await getDoc(doc(peer, 'users/peer'))).data().displayName, 'Original');
     await assertSucceeds(deleteDoc(alias(owner)));
     assert.equal((await getDoc(alias(owner))).exists(), false);
+
+    const consent = db => doc(db, 'users/owner/private/contactMatchConsent');
+    await assertSucceeds(setDoc(consent(owner), {enabled: true}));
+    await assertFails(getDoc(consent(peer)));
+    await assertFails(getDoc(consent(anonymous)));
+    await assertFails(setDoc(consent(peer), {enabled: true}));
+    await assertFails(setDoc(consent(owner), {enabled: true, phone: '+821012345678'}));
+    await assertSucceeds(setDoc(consent(owner), {enabled: false}));
+    assert.equal((await getDoc(consent(owner))).data().enabled, false);
   } finally {
     await env.cleanup();
   }

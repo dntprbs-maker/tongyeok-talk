@@ -49,11 +49,15 @@ class ContactAliasDialog extends StatefulWidget {
     required this.original,
     required this.alias,
     required this.onSave,
+    this.onPickContact,
+    this.onClearContact,
   });
 
   final String original;
   final String? alias;
   final Future<void> Function(String?) onSave;
+  final Future<void> Function()? onPickContact;
+  final Future<void> Function()? onClearContact;
 
   @override
   State<ContactAliasDialog> createState() => _ContactAliasDialogState();
@@ -91,6 +95,18 @@ class _ContactAliasDialogState extends State<ContactAliasDialog> {
     }
   }
 
+  Future<void> _updateContact(Future<void> Function() action) async {
+    setState(() => _busy = true);
+    try {
+      await action();
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'contactAliasSaveError');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -122,6 +138,17 @@ class _ContactAliasDialogState extends State<ContactAliasDialog> {
               errorText: _error == null ? null : tr(context, _error!),
             ),
           ),
+          if (widget.onPickContact case final action?)
+            TextButton.icon(
+              onPressed: _busy ? null : () => _updateContact(action),
+              icon: const Icon(Icons.contacts_outlined),
+              label: Text(tr(context, 'contactNamesPick')),
+            ),
+          if (widget.onClearContact case final action?)
+            TextButton(
+              onPressed: _busy ? null : () => _updateContact(action),
+              child: Text(tr(context, 'contactNamesClear')),
+            ),
         ],
       ),
       actions: [
