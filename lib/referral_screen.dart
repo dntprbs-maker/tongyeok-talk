@@ -15,6 +15,7 @@ import 'referral_sms_stub.dart'
     as sms;
 
 const _pendingReferralKey = 'pending_referral';
+const _preview = bool.fromEnvironment('TONGYEOK_WEB_INVITE_PREVIEW');
 String? _pendingLinkCode;
 
 Future<void> initializeReferralLinks() async {
@@ -49,7 +50,11 @@ Future<Map<String, dynamic>> referralRequest(
   final token = await FirebaseAuth.instance.currentUser!.getIdToken();
   final response = await http
       .post(
-        referralEndpoint.replace(path: '${referralEndpoint.path}/$action'),
+        _preview && kIsWeb
+            ? Uri.base.resolve('/referrals/$action')
+            : referralEndpoint.replace(
+              path: '${referralEndpoint.path}/$action',
+            ),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -66,6 +71,37 @@ Future<Map<String, dynamic>> referralRequest(
 }
 
 String referralLabel(BuildContext context) => tr(context, 'friendInvite');
+
+TextEditingValue _formatInvitePhone(
+  TextEditingValue oldValue,
+  TextEditingValue newValue,
+) {
+  final input = newValue.text;
+  if (!newValue.composing.isCollapsed ||
+      !RegExp(r'^010[0-9-]*$').hasMatch(input)) {
+    return newValue;
+  }
+  final digits = input.replaceAll('-', '');
+  if (digits.length <= 3 || digits.length > 11) return newValue;
+  final formatted =
+      digits.length <= 7
+          ? '010-${digits.substring(3)}'
+          : '010-${digits.substring(3, 7)}-${digits.substring(7)}';
+  if (formatted == input || !newValue.selection.isValid) return newValue;
+  int offset(int cursor) {
+    final before = input.substring(0, cursor).replaceAll('-', '').length;
+    if (before >= digits.length) return formatted.length;
+    return before + (before > 3 ? 1 : 0) + (before > 7 ? 1 : 0);
+  }
+
+  return TextEditingValue(
+    text: formatted,
+    selection: TextSelection(
+      baseOffset: offset(newValue.selection.baseOffset),
+      extentOffset: offset(newValue.selection.extentOffset),
+    ),
+  );
+}
 
 String referralRegistrationError(BuildContext context, String error) {
   final mn = LanguageScope.of(context).displayCode == 'mn';
@@ -257,6 +293,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     controller: _phone,
                     enabled: !_sending,
                     keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      TextInputFormatter.withFunction(_formatInvitePhone),
+                    ],
                     maxLength: 18,
                     decoration: InputDecoration(
                       labelText:

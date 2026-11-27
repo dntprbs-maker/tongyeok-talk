@@ -14,6 +14,7 @@
       {"source": "/review-auth", "function": {"functionId": "mobileAuthExchange", "region": "asia-northeast3"}},
       {"source": "/sessions", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}},
       {"source": "/guest", "destination": "/guest-entry.html"},
+      {"source": "/referrals/**", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}},
       {"source": "/guest-api/**", "function": {"functionId": "rewardApi", "region": "asia-northeast3"}}
     ],
     "redirects": [{"source": "/", "destination": "https://dntprbs-maker.github.io/tongyeok-talk/", "type": 302}]

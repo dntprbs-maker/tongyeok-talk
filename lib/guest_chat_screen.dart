@@ -15,8 +15,12 @@ import 'local_archive.dart';
 import 'past_chats_screen.dart';
 import 'message_bubble.dart';
 import 'read_receipts.dart';
+import 'referral_sms_stub.dart'
+    if (dart.library.js_interop) 'referral_sms_web.dart'
+    as sms;
 
 const _guestBackendOverride = String.fromEnvironment('TONGYEOK_GUEST_BACKEND');
+const _invitePreview = bool.fromEnvironment('TONGYEOK_WEB_INVITE_PREVIEW');
 const _legacyGuestBackend =
     'https://asia-northeast3-tongyeok-talk-lab-20261024.cloudfunctions.net/rewardApi';
 String get guestBackend =>
@@ -196,9 +200,13 @@ class _GuestInviteScreenState extends State<GuestInviteScreen> with RouteAware {
                 ],
               );
             }
-            final id = invite['id'] as String,
-                link =
-                    '$guestBackend/guest?room=$id#invite=${invite['secret']}';
+            final id = invite['id'] as String;
+            final linkOrigin =
+                _invitePreview
+                    ? 'https://tongyeok-talk-lab-20261024.web.app'
+                    : guestBackend;
+            final link =
+                '$linkOrigin/guest?room=$id#invite=${invite['secret']}';
             final invitationText =
                 '통역톡 비회원 대화 초대입니다. 아래 링크를 열고 이름을 입력한 뒤, '
                 '동의하고 채팅창에 글을 써 주세요.\n$link';
@@ -267,14 +275,19 @@ class _GuestInviteScreenState extends State<GuestInviteScreen> with RouteAware {
                                     title: Text(tr(context, 'guestSms')),
                                     onTap: () async {
                                       Navigator.pop(sheet);
-                                      final ok = await launchUrl(
-                                        Uri(
-                                          scheme: 'sms',
-                                          query:
-                                              'body=${Uri.encodeComponent(invitationText)}',
-                                        ),
-                                        mode: LaunchMode.externalApplication,
-                                      );
+                                      final ok =
+                                          sms.guestSmsAvailable
+                                              ? await sms.composeGuestSms(link)
+                                              : await launchUrl(
+                                                Uri(
+                                                  scheme: 'sms',
+                                                  query:
+                                                      'body=${Uri.encodeComponent(invitationText)}',
+                                                ),
+                                                mode:
+                                                    LaunchMode
+                                                        .externalApplication,
+                                              );
                                       if (!ok && context.mounted) {
                                         ScaffoldMessenger.of(
                                           context,
