@@ -67,37 +67,61 @@ export async function recordReferralActivity(db, uid, at) {
     if (referral.activityDays.includes(day)) return;
     const activityDays = [...referral.activityDays, day];
     const patch = {activityDays};
-    if (activityDays.length === 10) patch.nextCheckAt = new Date(joined + 30 * dayMs);
+    if (activityDays.length === 10) patch.nextCheckAt = new Date(at);
     tx.update(ref, patch);
   });
 }
 
+const roles = ['leader', 'member'];
+
 export async function grantReferral(db, ref, now = Date.now()) {
   return db.runTransaction(async tx => {
     const referral = (await tx.get(ref)).data();
-    if (!referral || referral.grantedAt || referral.activityDays.length < 10 ||
+    if (!referral || referral.grantedAt || referral.cancelledAt ||
+        referral.activityDays.length < 10 ||
         !timestamp(referral.nextCheckAt) || timestamp(referral.nextCheckAt) > now) return false;
-    const wallet = db.doc(`translationWallets/${referral.inviter}`);
-    const [balance, inviter, invitee, inviterContact, inviteeContact] = await tx.getAll(
-      wallet, db.doc(`users/${referral.inviter}`), db.doc(`users/${ref.id}`),
-      contactFor(db, referral.inviter), contactFor(db, ref.id),
-    );
-    if (!inviterContact.exists || !inviteeContact.exists ||
-        !roleOf(inviter.data()) || !roleOf(invitee.data())) {
+    const inviterUid = referral.inviter;
+    const inviteeUid = ref.id;
+    const inviterRole = referral.inviterRole;
+    const inviteeRole = referral.inviteeRole;
+    if (typeof inviterUid !== 'string' || !inviterUid || inviterUid.includes('/') ||
+        inviterUid === inviteeUid || !roles.includes(inviterRole) ||
+        !roles.includes(inviteeRole) || inviterRole === inviteeRole) {
       tx.update(ref, {nextCheckAt:null, cancelledAt:new Date(now)});
       return false;
     }
-    const leader = referral.inviterRole === 'leader';
-    const amount = leader ? 5 : 500;
-    const value = balance.data() ?? {};
-    const reward = leader
-      ? {leaderPassUntil:new Date(midnightKst(Math.max(now, timestamp(value.leaderPassUntil)) + amount * dayMs))}
-      : {balance:(value.balance ?? 0) + amount};
-    tx.set(wallet, {...reward, updatedAt:new Date(now)}, {merge:true});
-    tx.create(wallet.collection('entries').doc(`referral_${ref.id}`), {
-      type:'referral_reward', kind:leader ? 'day_pass' : 'translations', amount, createdAt:new Date(now),
-    });
+    const inviterWallet = db.doc(`translationWallets/${inviterUid}`);
+    const inviteeWallet = db.doc(`translationWallets/${inviteeUid}`);
+    const receiptFor = wallet => wallet.collection('entries').doc(`referral_${inviteeUid}`);
+    const [inviterBalance, inviteeBalance, inviter, invitee, inviterContact,
+      inviteeContact, inviterReceipt, inviteeReceipt] = await tx.getAll(
+      inviterWallet, inviteeWallet, db.doc(`users/${inviterUid}`), db.doc(`users/${inviteeUid}`),
+      contactFor(db, inviterUid), contactFor(db, inviteeUid),
+      receiptFor(inviterWallet), receiptFor(inviteeWallet),
+    );
+    if (!inviterContact.exists ||
+        !inviteeContact.exists || !roleOf(inviter.data()) || !roleOf(invitee.data())) {
+      tx.update(ref, {nextCheckAt:null, cancelledAt:new Date(now)});
+      return false;
+    }
+    const pay = (wallet, balance, role, beneficiary, paid) => {
+      if (paid) return false;
+      const leader = role === 'leader';
+      const amount = leader ? 5 : 500;
+      const value = balance.data() ?? {};
+      const reward = leader
+        ? {leaderPassUntil:new Date(midnightKst(Math.max(now, timestamp(value.leaderPassUntil)) + amount * dayMs))}
+        : {balance:(value.balance ?? 0) + amount};
+      tx.set(wallet, {...reward, updatedAt:new Date(now)}, {merge:true});
+      tx.create(receiptFor(wallet), {
+        type:'referral_reward', kind:leader ? 'day_pass' : 'translations', amount, beneficiary,
+        createdAt:new Date(now),
+      });
+      return true;
+    };
+    const paidInviter = pay(inviterWallet, inviterBalance, inviterRole, 'inviter', inviterReceipt.exists);
+    const paidInvitee = pay(inviteeWallet, inviteeBalance, inviteeRole, 'invitee', inviteeReceipt.exists);
     tx.update(ref, {grantedAt:new Date(now), nextCheckAt:null});
-    return true;
+    return paidInviter || paidInvitee;
   });
 }
