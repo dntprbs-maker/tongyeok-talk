@@ -193,7 +193,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                     if (window === window.top) {
                       let nextId = 0;
                       const pending = new Map();
-                      window.tongyeokComposeReferralSms = (phone, code) =>
+                      const compose = (phone, code, language) =>
                         new Promise(resolve => {
                           const id = ++nextId;
                           const timer = setTimeout(() => {
@@ -205,9 +205,11 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                             resolve(ok === true);
                           });
                           window.TongyeokReferralSms.postMessage(JSON.stringify({
-                            id, phone, code, nonce: ${jsonEncode(nonce)}
+                            id, phone, code, language, nonce: ${jsonEncode(nonce)}
                           }));
                         });
+                      window.tongyeokComposeReferralSms = (phone, code) => compose(phone, code);
+                      window.tongyeokComposeLocalizedReferralSms = compose;
                       window.tongyeokReferralSmsResult = (nonce, id, ok) => {
                         if (nonce !== ${jsonEncode(nonce)}) return;
                         const finish = pending.get(id);
@@ -259,6 +261,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     final id = decoded['id'];
     final phone = decoded['phone'];
     final code = decoded['code'];
+    final language = decoded['language'];
+    if (language != null && language != 'ko' && language != 'mn') return;
     if (nonce.isEmpty || decoded['nonce'] != nonce || id is! int || id < 1 ||
         phone is! String || !isReferralPhone(phone) ||
         code is! String || !isReferralCode(code)) {
@@ -271,7 +275,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       _inviteOpen = true;
       try {
         await const MethodChannel('tongyeok/invite').invokeMethod<void>(
-          'composeSms', {'phone': phone, 'body': referralMessage(code)},
+          'composeSms', {'phone': phone, 'body': referralMessage(code, language: language as String?)},
         );
         opened = true;
       } on PlatformException {

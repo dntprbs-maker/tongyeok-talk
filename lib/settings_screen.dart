@@ -345,7 +345,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _item(
               Icons.card_giftcard_outlined,
               referralLabel(context),
-              () => _showPage(const ReferralScreen()),
+              () => showReferralInviteDialog(context),
             ),
             _item(
               Icons.chat_bubble_outline,

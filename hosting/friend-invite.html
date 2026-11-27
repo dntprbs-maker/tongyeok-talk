@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>통역톡 초대</title>
+  <style>
+    body { margin: 0; padding: 32px 20px; background: #eef3ff; color: #152449; font: 1rem/1.55 system-ui, sans-serif }
+    main { max-width: 380px; margin: auto; padding: 24px; border-radius: 20px; background: #fff }
+    h1 { margin: 0; font-size: 1.6rem }
+    label { display: block; margin-bottom: 6px; font-weight: 700 }
+    input, button, a { font: inherit }
+    input { width: 100%; box-sizing: border-box; padding: 12px; border: 1px solid #adbad3; border-radius: 8px }
+    button { margin-top: 8px; padding: 8px 12px; border: 1px solid #183ec4; color: #183ec4; border-radius: 8px; background: #fff }
+    a { display: block; margin-top: 10px; padding: 12px; border-radius: 10px; text-align: center; color: #183ec4; background: #eef3ff; font-weight: 700 }
+    a.primary { color: #fff; background: #183ec4 }
+  </style>
+  <script src="/friend-invite.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1 id="title">통역톡 초대</h1>
+    <p id="notice">초대 링크를 확인해 주세요.</p>
+    <section id="invite" hidden>
+      <label id="code-label" for="code">초대 코드</label>
+      <input id="code" readonly>
+      <button id="copy" type="button">코드 복사</button>
+      <span id="result" role="status"></span>
+      <div id="stores">
+        <a id="android">안드로이드 · Google Play</a>
+        <a id="ios">아이폰 · App Store</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -23,6 +23,7 @@ internal class ContactsBridge(
     private val executor = Executors.newSingleThreadExecutor()
     private var permission: MethodChannel.Result? = null
     private var picker: MethodChannel.Result? = null
+    private var pickerColumn = Phone.DISPLAY_NAME
     private val reads = mutableSetOf<MethodChannel.Result>()
 
     init {
@@ -48,7 +49,8 @@ internal class ContactsBridge(
                     result.success(false)
                 }
             }
-            "pick" -> pick(result)
+            "pick" -> pick(result, Phone.DISPLAY_NAME)
+            "pickPhone" -> pick(result, Phone.NUMBER)
             "lookup" -> {
                 val numbers = call.arguments as? Map<*, *>
                 if (!granted() || numbers == null || numbers.size > 30 || reads.isNotEmpty()) {
@@ -96,12 +98,13 @@ internal class ContactsBridge(
     }
 
     @Suppress("DEPRECATION")
-    private fun pick(result: MethodChannel.Result) {
+    private fun pick(result: MethodChannel.Result, column: String) {
         if (permission != null || picker != null) {
             result.success(null)
             return
         }
         picker = result
+        pickerColumn = column
         try {
             activity.startActivityForResult(Intent(Intent.ACTION_PICK, Phone.CONTENT_URI), PICK)
         } catch (_: RuntimeException) {
@@ -121,6 +124,7 @@ internal class ContactsBridge(
     fun pickerResult(request: Int, status: Int, data: Intent?): Boolean {
         if (request != PICK) return false
         val pending = picker ?: return true
+        val column = pickerColumn
         picker = null
         val uri = data?.data
         if (status != Activity.RESULT_OK || uri?.scheme != "content" ||
@@ -129,7 +133,7 @@ internal class ContactsBridge(
             return true
         }
         background(pending, null) {
-            activity.contentResolver.query(uri, arrayOf(Phone.DISPLAY_NAME), null, null, null)
+            activity.contentResolver.query(uri, arrayOf(column), null, null, null)
                 ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
         }
         return true

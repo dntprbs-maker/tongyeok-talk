@@ -25,6 +25,8 @@ final class ContactsBridge: NSObject, CNContactPickerDelegate {
       enable(result)
     case "pick":
       pick(result)
+    case "pickPhone":
+      pick(result, phoneOnly: true)
     case "lookup":
       lookup(call.arguments, result: result)
     default:
@@ -146,7 +148,7 @@ final class ContactsBridge: NSObject, CNContactPickerDelegate {
     return name
   }
 
-  private func pick(_ result: @escaping FlutterResult) {
+  private func pick(_ result: @escaping FlutterResult, phoneOnly: Bool = false) {
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     guard pendingPick == nil,
       let scene = scenes.first(where: { $0.activationState == .foregroundActive }),
@@ -160,12 +162,22 @@ final class ContactsBridge: NSObject, CNContactPickerDelegate {
     }
     let picker = CNContactPickerViewController()
     picker.delegate = self
+    if phoneOnly {
+      picker.displayedPropertyKeys = [CNContactPhoneNumbersKey]
+      picker.predicateForEnablingContact = NSPredicate(format: "phoneNumbers.@count > 0")
+      picker.predicateForSelectionOfContact = NSPredicate(value: false)
+      picker.predicateForSelectionOfProperty = NSPredicate(format: "key == %@", CNContactPhoneNumbersKey)
+    }
     pendingPick = result
     presenter.present(picker, animated: true)
   }
 
   func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
     finishPick(with: Self.displayName(contact))
+  }
+
+  func contactPicker(_ picker: CNContactPickerViewController, didSelect contactProperty: CNContactProperty) {
+    finishPick(with: (contactProperty.value as? CNPhoneNumber)?.stringValue)
   }
 
   func contactPickerDidCancel(_ picker: CNContactPickerViewController) {
