@@ -23,6 +23,7 @@ import 'native_reward_bridge_script.dart';
 import 'native_social_login_bridge.dart';
 import 'native_social_login_device.dart';
 import 'native_contact_names.dart';
+import 'referral_invite.dart';
 
 void main() => runApp(
   const MaterialApp(
@@ -64,6 +65,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   late final WebViewController _controller;
   late final Future<List<String>?> _installedVersion = readInstalledVersion(_android);
   bool _updateOpen = false;
+  bool _inviteOpen = false;
   bool _loading = true;
   bool _failed = false;
   final _pushDevice = NativePushBridgeDevice();
@@ -138,6 +140,10 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             'TongyeokAppUpdate',
             onMessageReceived: (message) => _openUpdate(message.message),
           )
+          ..addJavaScriptChannel(
+            'TongyeokReferralSms',
+            onMessageReceived: (message) => _composeReferralSms(message.message),
+          )
           ..setNavigationDelegate(
             NavigationDelegate(
               onNavigationRequest: (request) {
@@ -182,6 +188,35 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                     nativePushBridgeScript(_pageNonce),
                   );
                 }
+                if ((_ios || _android) && trusted && nonce == _pageNonce) {
+                  await _controller.runJavaScript('''
+                    if (window === window.top) {
+                      let nextId = 0;
+                      const pending = new Map();
+                      window.tongyeokComposeReferralSms = (phone, code) =>
+                        new Promise(resolve => {
+                          const id = ++nextId;
+                          const timer = setTimeout(() => {
+                            pending.delete(id);
+                            resolve(false);
+                          }, 15000);
+                          pending.set(id, ok => {
+                            clearTimeout(timer);
+                            resolve(ok === true);
+                          });
+                          window.TongyeokReferralSms.postMessage(JSON.stringify({
+                            id, phone, code, nonce: ${jsonEncode(nonce)}
+                          }));
+                        });
+                      window.tongyeokReferralSmsResult = (nonce, id, ok) => {
+                        if (nonce !== ${jsonEncode(nonce)}) return;
+                        const finish = pending.get(id);
+                        pending.delete(id);
+                        if (finish) finish(ok);
+                      };
+                    }
+                  ''');
+                }
                 if (mounted) setState(() => _loading = false);
                 final installed = await _installedVersion;
                 if (!mounted || installed == null || nonce != _pageNonce ||
@@ -209,6 +244,48 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             ),
           );
     _openPublishedApp();
+  }
+
+  Future<void> _composeReferralSms(String message) async {
+    if (!mounted || (!_ios && !_android) || message.length > 256) return;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(message);
+    } on FormatException {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) return;
+    final nonce = _pageNonce;
+    final id = decoded['id'];
+    final phone = decoded['phone'];
+    final code = decoded['code'];
+    if (nonce.isEmpty || decoded['nonce'] != nonce || id is! int || id < 1 ||
+        phone is! String || !isReferralPhone(phone) ||
+        code is! String || !isReferralCode(code)) {
+      return;
+    }
+    final page = Uri.tryParse(await _controller.currentUrl() ?? '');
+    if (!mounted || nonce != _pageNonce || page == null || !isTrustedTongyeokPage(page)) return;
+    var opened = false;
+    if (!_inviteOpen) {
+      _inviteOpen = true;
+      try {
+        await const MethodChannel('tongyeok/invite').invokeMethod<void>(
+          'composeSms', {'phone': phone, 'body': referralMessage(code)},
+        );
+        opened = true;
+      } on PlatformException {
+        opened = false;
+      } on MissingPluginException {
+        opened = false;
+      } finally {
+        _inviteOpen = false;
+      }
+    }
+    if (!mounted || nonce != _pageNonce) return;
+    await _controller.runJavaScript(
+      'window.tongyeokReferralSmsResult?.(${jsonEncode(nonce)}, $id, $opened)',
+    );
   }
 
   Future<void> _openUpdate(String message) async {

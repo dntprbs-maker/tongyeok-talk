@@ -22,6 +22,27 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         contacts?.close()
         contacts = ContactsBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/invite")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "composeSms") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val phone = call.argument<String>("phone")
+                val body = call.argument<String>("body")
+                if (phone == null || !Regex("\\+?[0-9]{8,15}").matches(phone) || body.isNullOrBlank()) {
+                    result.error("invalid_invitation", null, null)
+                    return@setMethodCallHandler
+                }
+                val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null))
+                    .putExtra("sms_body", body)
+                try {
+                    startActivity(intent)
+                    result.success(null)
+                } catch (_: ActivityNotFoundException) {
+                    result.error("unavailable", null, null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/app_update")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
