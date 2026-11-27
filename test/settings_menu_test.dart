@@ -4,6 +4,37 @@ import '../lib/app_language.dart';
 import '../lib/settings_screen.dart';
 
 void main() {
+  testWidgets('settings back returns to the conversations screen', (
+    tester,
+  ) async {
+    final navigation = GlobalKey<NavigatorState>();
+    const conversations = Scaffold(body: Text('Conversations'));
+
+    await tester.pumpWidget(
+      LanguageScope(
+        child: MaterialApp(
+          navigatorKey: navigation,
+          home: const SettingsScreen(),
+          routes: {'/recentConversations': (_) => conversations},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(navigation.currentState!.canPop(), isFalse);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Conversations'), findsOneWidget);
+
+    navigation.currentState!.push<void>(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Conversations'), findsOneWidget);
+    expect(navigation.currentState!.canPop(), isFalse);
+  });
+
   testWidgets('settings shows headings and opens the selected preference', (
     tester,
   ) async {

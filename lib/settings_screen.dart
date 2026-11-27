@@ -311,6 +311,16 @@ class _SettingsScreenState extends State<SettingsScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
+      leading: BackButton(
+        onPressed: () {
+          final navigator = Navigator.of(context);
+          if (navigator.canPop()) {
+            navigator.pop();
+          } else {
+            navigator.pushReplacementNamed('/recentConversations');
+          }
+        },
+      ),
       title: Text(
         tr(context, 'settings'),
         style: const TextStyle(fontWeight: FontWeight.w800),

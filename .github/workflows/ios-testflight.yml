@@ -59,7 +59,11 @@ jobs:
           if [[ -n "$REQUESTED_BUILD_NUMBER" ]]; then
             [[ "$REQUESTED_BUILD_NUMBER" =~ ^3[0-9]{3}$ ]]
             build_number="$REQUESTED_BUILD_NUMBER"
-            if [[ "$build_number" == 3005 ]]; then
+            if [[ "$build_number" == 3007 ]]; then
+              [[ "$APP_VARIANT" == web && "$SOCIAL_LOGIN" == true ]]
+              build_name=1.0.4
+              ad_diagnostics=false
+            elif [[ "$build_number" == 3005 ]]; then
               build_name=1.0.3
               ad_diagnostics=false
             else
