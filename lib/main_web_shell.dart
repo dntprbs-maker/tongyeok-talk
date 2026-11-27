@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'app_update_screen.dart';
 import 'ios_reward_ad_probe.dart';
+import 'ios_update_qa_server.dart';
 import 'mobile_web_navigation.dart';
 import 'native_push_bridge_device.dart';
 import 'native_push_bridge_protocol.dart';
@@ -24,14 +25,18 @@ import 'native_social_login_bridge.dart';
 import 'native_social_login_device.dart';
 import 'native_contact_names.dart';
 
-void main() => runApp(
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (socialLocalPreview) await startUpdateQaServer();
+  runApp(
   const MaterialApp(
     debugShowCheckedModeBanner: false,
     supportedLocales: [Locale('ko'), Locale('mn'), Locale('en')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
     home: TongyeokWebShell(),
   ),
-);
+  );
+}
 
 class TongyeokWebShell extends StatefulWidget {
   const TongyeokWebShell({super.key});

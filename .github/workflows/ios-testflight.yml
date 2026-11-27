@@ -59,7 +59,10 @@ jobs:
           if [[ -n "$REQUESTED_BUILD_NUMBER" ]]; then
             [[ "$REQUESTED_BUILD_NUMBER" =~ ^3[0-9]{3}$ ]]
             build_number="$REQUESTED_BUILD_NUMBER"
-            if [[ "$build_number" == 3005 ]]; then
+            if [[ "$build_number" == 3006 ]]; then
+              build_name=1.0.4
+              ad_diagnostics=false
+            elif [[ "$build_number" == 3005 ]]; then
               build_name=1.0.3
               ad_diagnostics=false
             else
@@ -86,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GOOGLE_IOS_CLIENT_ID" =~ ^[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$ ]]
-          flutter create --platforms=ios --org com --project-name tongyeoktalk "$RUNNER_TEMP/tongyeok-app"
+          flutter create --platforms=ios,web --org com --project-name tongyeoktalk "$RUNNER_TEMP/tongyeok-app"
           cd "$RUNNER_TEMP/tongyeok-app"
           rm test/widget_test.dart
           cp "$GITHUB_WORKSPACE/pubspec.yaml" "$GITHUB_WORKSPACE/pubspec.lock" .
@@ -105,7 +108,8 @@ jobs:
           path = Path("ios/Runner/Info.plist")
           with path.open("rb") as file:
               info = plistlib.load(file)
-          info["CFBundleDisplayName"] = "통역톡"
+          info["CFBundleDisplayName"] = "통역톡 업데이트 검증"
+          info["NSAppTransportSecurity"] = {"NSAllowsLocalNetworking": True}
           info["GIDClientID"] = client_id
           info["UISupportedInterfaceOrientations"] = ["UIInterfaceOrientationPortrait"]
           info["UISupportedInterfaceOrientations~ipad"] = ["UIInterfaceOrientationPortrait"]
@@ -274,7 +278,9 @@ jobs:
             target=lib/main_web_shell.dart
           fi
           if [[ "$SOCIAL_LOGIN" == true ]]; then [[ "$APP_VARIANT" == web ]]; fi
-          flutter build ios --release --no-codesign --target "$target" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NUMBER="$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NAME="$BUILD_NAME" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE" --dart-define=TONGYEOK_IOS_AD_DIAGNOSTICS="$AD_DIAGNOSTICS" --dart-define=TONGYEOK_SOCIAL_ONLY="$SOCIAL_LOGIN"
+          flutter build web --target lib/ios_update_qa_web.dart --no-wasm-dry-run --output assets/update_qa
+          find assets/update_qa -type f ! -name '.*' | LC_ALL=C sort | sed 's/^/        - /' >> pubspec.yaml
+          flutter build ios --release --no-codesign --dart-define=TONGYEOK_IOS_UPDATE_QA=true --target "$target" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NUMBER="$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NAME="$BUILD_NAME" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE" --dart-define=TONGYEOK_IOS_AD_DIAGNOSTICS="$AD_DIAGNOSTICS" --dart-define=TONGYEOK_SOCIAL_ONLY="$SOCIAL_LOGIN"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
           export PROFILE_NAME
           python3 - <<'PY'

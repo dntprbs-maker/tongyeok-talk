@@ -149,6 +149,11 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
           children: [
             Card(
               child: ListTile(
+                onLongPress: () {
+                  setState(() {
+                    _available = Future.value('1.0.5');
+                  });
+                },
                 title: Text(_text('현재 설치 버전', 'Суулгасан хувилбар')),
                 subtitle: Text(
                   _text(

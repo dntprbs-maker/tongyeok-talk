@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 const socialLocalPreview =
-    kDebugMode && bool.fromEnvironment('TONGYEOK_SOCIAL_LOCAL_PREVIEW');
+    (kDebugMode && bool.fromEnvironment('TONGYEOK_SOCIAL_LOCAL_PREVIEW')) ||
+    bool.fromEnvironment('TONGYEOK_IOS_UPDATE_QA');
 
 /// The embedded app may navigate only within the deployed application path.
 /// This check is shared by navigation and any future native bridge: allowing
