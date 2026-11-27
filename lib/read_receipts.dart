@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'app_language.dart';
 import 'query_audit.dart';
+import 'conversation_row_card.dart';
 
 final chatRouteObserver = RouteObserver<ModalRoute<void>>();
 
@@ -64,6 +65,7 @@ class UnreadAvatar extends StatefulWidget {
   final Timestamp? messageRevision;
   final Stream<Timestamp?>? receiptStream;
   final Future<int> Function(Timestamp?)? countLoader;
+  final bool bubbleIcon;
   const UnreadAvatar({
     super.key,
     required this.conversationId,
@@ -73,6 +75,7 @@ class UnreadAvatar extends StatefulWidget {
     this.messageRevision,
     this.receiptStream,
     this.countLoader,
+    this.bubbleIcon = false,
   });
   @override
   State<UnreadAvatar> createState() => _UnreadAvatarState();
@@ -185,6 +188,7 @@ class _UnreadAvatarState extends State<UnreadAvatar>
             count: _count,
             group: widget.group,
             displayName: widget.displayName,
+            bubbleIcon: widget.bubbleIcon,
           );
 }
 
@@ -192,11 +196,13 @@ class UnreadBadge extends StatelessWidget {
   final int count;
   final bool group;
   final String? displayName;
+  final bool bubbleIcon;
   const UnreadBadge({
     super.key,
     required this.count,
     this.group = false,
     this.displayName,
+    this.bubbleIcon = false,
   });
   @override
   Widget build(BuildContext context) => Semantics(
@@ -206,18 +212,23 @@ class UnreadBadge extends StatelessWidget {
       label: Text(count > 99 ? '99+' : '$count'),
       backgroundColor: const Color(0xFFD92C40),
       textColor: Colors.white,
-      child: CircleAvatar(
-        backgroundColor:
-            group ? const Color(0xFFECE8FF) : const Color(0xFFE2EFFF),
-        foregroundColor: const Color(0xFF3346B8),
-        child:
-            !group && displayName != null && displayName!.isNotEmpty
-                ? Text(
-                  displayName!.characters.first,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                )
-                : Icon(group ? Icons.group_outlined : Icons.person_outline),
-      ),
+      child:
+          bubbleIcon
+              ? ChatBubbleAvatar(group: group)
+              : CircleAvatar(
+                backgroundColor:
+                    group ? const Color(0xFFECE8FF) : const Color(0xFFE2EFFF),
+                foregroundColor: const Color(0xFF3346B8),
+                child:
+                    !group && displayName != null && displayName!.isNotEmpty
+                        ? Text(
+                          displayName!.characters.first,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        )
+                        : Icon(
+                          group ? Icons.group_outlined : Icons.person_outline,
+                        ),
+              ),
     ),
   );
 }

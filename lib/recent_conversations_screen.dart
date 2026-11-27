@@ -7,6 +7,7 @@ import 'chat_screen.dart';
 import 'app_language.dart';
 import 'ui_errors.dart';
 import 'read_receipts.dart';
+import 'conversation_row_card.dart';
 import 'notification_prompt.dart';
 import 'notice_bell.dart';
 import 'query_audit.dart';
@@ -180,22 +181,33 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
               color: const Color(0xFFEBF3FE),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TranslationWallet(
-                    compact: true,
-                    balanceOnly: true,
-                    showLeaderPass:
-                        profile != null &&
-                        profile['preferredLanguage'] == 'Korean',
-                  ),
-                ),
-                if (canWatch) ...[
-                  const SizedBox(width: 10),
-                  Flexible(child: _watchAdsButton()),
-                ],
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wallet = TranslationWallet(
+                  compact: true,
+                  balanceOnly: true,
+                  showLeaderPass: profile?['preferredLanguage'] == 'Korean',
+                );
+                if (!canWatch) return wallet;
+                final stacked = constraints.maxWidth < 270 ||
+                    MediaQuery.textScalerOf(context).scale(16) > 21;
+                if (stacked) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [wallet, const SizedBox(height: 8), _watchAdsButton()],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: wallet),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.46),
+                      child: _watchAdsButton(),
+                    ),
+                  ],
+                );
+              },
             ),
           );
         },
@@ -410,23 +422,32 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
                             final label = _aliases[peer] ??
                                 (peer == null ? null : _contactNames.name(peer)) ??
                                 original;
-                            return Container(
-                              decoration: const BoxDecoration(
-                                border: Border(
-                                  bottom: BorderSide(color: Color(0xFFF0F1F4)),
-                                ),
-                              ),
+                            return ChatRowCard(
+                              onTap:
+                                  () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder:
+                                          (_) => ChatScreen(
+                                            conversationId: room.id,
+                                            otherUserName: original,
+                                          ),
+                                    ),
+                                  ),
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 0,
-                                  vertical: 10,
+                                  vertical: 4,
                                 ),
+                                minLeadingWidth: 24,
+                                horizontalTitleGap: 12,
                                 leading: UnreadAvatar(
                                   key: ValueKey('unread-${room.id}'),
                                   conversationId: room.id,
                                   uid: currentUser.uid,
                                   displayName: label,
                                   group: data['isGroup'] == true,
+                                  bubbleIcon: true,
                                   messageRevision:
                                       data['timestamp'] as Timestamp?,
                                 ),
@@ -438,7 +459,9 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                subtitle: Padding(
+                                subtitle: (data['lastMessage'] as String? ?? '').trim().isEmpty
+                                    ? null
+                                    : Padding(
                                   padding: const EdgeInsets.only(top: 5),
                                   child: Text(
                                     data['lastMessage'] as String? ?? '',
@@ -463,17 +486,6 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
                                           ),
                                         )
                                         : null,
-                                onTap:
-                                    () => Navigator.push(
-                                      context,
-                                      MaterialPageRoute<void>(
-                                        builder:
-                                            (_) => ChatScreen(
-                                              conversationId: room.id,
-                                              otherUserName: original,
-                                            ),
-                                      ),
-                                    ),
                               ),
                             );
                           },
