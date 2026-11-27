@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'app_language.dart';
 import 'brand.dart';
+import 'qa_device_login.dart';
 import 'social_login_platform.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -53,6 +54,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                   child: Text(tr(context, 'signIn')),
                 ),
+                const QaDeviceLogin(),
                 if (!_socialOnly && !nativeSocialLoginAvailable) ...[
                   const SizedBox(height: 12),
                   OutlinedButton(
