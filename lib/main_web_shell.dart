@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'app_update_screen.dart';
 import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
 import 'native_push_bridge_device.dart';
@@ -39,7 +40,6 @@ class TongyeokWebShell extends StatefulWidget {
 }
 
 class _TongyeokWebShellState extends State<TongyeokWebShell> {
-  static const _buildNumber = String.fromEnvironment('TONGYEOK_BUILD_NUMBER');
   // Keep disabled until the Apple push profile/key and device tests are ready.
   static const _nativePushEnabled = bool.fromEnvironment(
     'TONGYEOK_IOS_NATIVE_PUSH',
@@ -62,6 +62,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
           ? Uri.https('tongyeok-talk-lab-20261024.web.app', '/mobile/')
           : Uri.https('dntprbs-maker.github.io', '/tongyeok-talk/');
   late final WebViewController _controller;
+  late final Future<List<String>?> _installedVersion = readInstalledVersion(_android);
+  bool _updateOpen = false;
   bool _loading = true;
   bool _failed = false;
   final _pushDevice = NativePushBridgeDevice();
@@ -132,6 +134,10 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                   .whenComplete(() => _queuedPushRequests--);
             },
           )
+          ..addJavaScriptChannel(
+            'TongyeokAppUpdate',
+            onMessageReceived: (message) => _openUpdate(message.message),
+          )
           ..setNavigationDelegate(
             NavigationDelegate(
               onNavigationRequest: (request) {
@@ -152,6 +158,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                 }
               },
               onPageFinished: (url) async {
+                final nonce = _pageNonce;
                 final trusted = isTrustedTongyeokPage(Uri.parse(url));
                 if (_canUseContacts && _isContactsPage(url)) {
                   await _controller.runJavaScript(nativeContactNamesScript(_pageNonce));
@@ -176,6 +183,20 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                   );
                 }
                 if (mounted) setState(() => _loading = false);
+                final installed = await _installedVersion;
+                if (!mounted || installed == null || nonce != _pageNonce ||
+                    !isAppUpdatePage(Uri.tryParse(await _controller.currentUrl() ?? '')) ||
+                    nonce != _pageNonce) {
+                  return;
+                }
+                await _controller.runJavaScript("""
+                  if (window === window.top) {
+                    window.tongyeokInstalledVersion = ${jsonEncode(installed)};
+                    window.tongyeokOpenAppUpdate = (mn) =>
+                      window.TongyeokAppUpdate.postMessage(${jsonEncode(nonce)} + (mn ? ':mn' : ':ko'));
+                    window.dispatchEvent(new Event('tongyeok-app-update-ready'));
+                  }
+                """);
               },
               onWebResourceError: (error) {
                 if (mounted && error.isForMainFrame == true) {
@@ -188,6 +209,32 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             ),
           );
     _openPublishedApp();
+  }
+
+  Future<void> _openUpdate(String message) async {
+    final nonce = _pageNonce;
+    if (!mounted || _updateOpen || nonce.isEmpty ||
+        (message != '$nonce:ko' && message != '$nonce:mn')) {
+      return;
+    }
+    if (!isAppUpdatePage(Uri.tryParse(await _controller.currentUrl() ?? '')) ||
+        !mounted || nonce != _pageNonce || _updateOpen) {
+      return;
+    }
+    final installed = await _installedVersion;
+    if (!mounted || installed == null || nonce != _pageNonce || _updateOpen) return;
+    _updateOpen = true;
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => AppUpdateScreen(
+          android: _android,
+          mongolian: message.endsWith(':mn'),
+          installed: installed,
+        ),
+      ));
+    } finally {
+      _updateOpen = false;
+    }
   }
 
   Future<void> _handleContactNames(String raw, String nonce) async {
@@ -400,20 +447,6 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_buildNumber.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 4,
-                  horizontal: 16,
-                ),
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Text(
-                    mongolian ? 'Хувилбар $_buildNumber' : '빌드 $_buildNumber',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ),
-              ),
             Expanded(
               child: Stack(
                 children: [

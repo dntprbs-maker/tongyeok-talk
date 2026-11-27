@@ -71,5 +71,6 @@ flutter {
 }
 
 dependencies {
+    implementation("com.google.android.play:app-update:2.1.0")
     implementation("com.google.android.gms:play-services-ads:25.5.0")
 }

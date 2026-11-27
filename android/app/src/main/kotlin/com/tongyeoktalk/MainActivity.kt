@@ -10,6 +10,8 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import com.google.android.gms.ads.AdRequest
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.UpdateAvailability
 
 class MainActivity : FlutterActivity() {
     private var contacts: ContactsBridge? = null
@@ -18,6 +20,30 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         contacts?.close()
         contacts = ContactsBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/app_update")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installed" -> {
+                        @Suppress("DEPRECATION")
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        @Suppress("DEPRECATION")
+                        val build = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                        result.success(listOf(info.versionName, build.toString()))
+                    }
+                    "check" -> AppUpdateManagerFactory.create(this).appUpdateInfo
+                        .addOnSuccessListener { info ->
+                            when (info.updateAvailability()) {
+                                UpdateAvailability.UPDATE_AVAILABLE,
+                                UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS ->
+                                    result.success(info.availableVersionCode().toString())
+                                UpdateAvailability.UPDATE_NOT_AVAILABLE -> result.success(null)
+                                else -> result.error("unavailable", null, null)
+                            }
+                        }
+                        .addOnFailureListener { result.error("unavailable", null, null) }
+                    else -> result.notImplemented()
+                }
+            }
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/ad_test_device")
             .setMethodCallHandler { call, result ->

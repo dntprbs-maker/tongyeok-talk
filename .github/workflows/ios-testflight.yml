@@ -274,7 +274,7 @@ jobs:
             target=lib/main_web_shell.dart
           fi
           if [[ "$SOCIAL_LOGIN" == true ]]; then [[ "$APP_VARIANT" == web ]]; fi
-          flutter build ios --release --no-codesign --target "$target" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NUMBER="$BUILD_NUMBER" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE" --dart-define=TONGYEOK_IOS_AD_DIAGNOSTICS="$AD_DIAGNOSTICS" --dart-define=TONGYEOK_SOCIAL_ONLY="$SOCIAL_LOGIN"
+          flutter build ios --release --no-codesign --target "$target" --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NUMBER="$BUILD_NUMBER" --dart-define=TONGYEOK_BUILD_NAME="$BUILD_NAME" --dart-define=TONGYEOK_IOS_NATIVE_PUSH="$NATIVE_PUSH" --dart-define=TONGYEOK_IOS_NATIVE_REWARDS="$NATIVE_REWARDS" --dart-define=TONGYEOK_ADS_TEST_MODE="$ADS_TEST_MODE" --dart-define=TONGYEOK_IOS_AD_DIAGNOSTICS="$AD_DIAGNOSTICS" --dart-define=TONGYEOK_SOCIAL_ONLY="$SOCIAL_LOGIN"
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print Name' "$RUNNER_TEMP/profile.plist")
           export PROFILE_NAME
           python3 - <<'PY'
