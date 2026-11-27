@@ -2,8 +2,10 @@ package com.tongyeoktalk
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
@@ -29,6 +31,18 @@ class MainActivity : FlutterActivity() {
                         @Suppress("DEPRECATION")
                         val build = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
                         result.success(listOf(info.versionName, build.toString()))
+                    }
+                    "openStore" -> {
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("market://details?id=com.tongyeoktalk"),
+                        ).setPackage("com.android.vending")
+                        try {
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: ActivityNotFoundException) {
+                            result.success(false)
+                        }
                     }
                     "check" -> AppUpdateManagerFactory.create(this).appUpdateInfo
                         .addOnSuccessListener { info ->

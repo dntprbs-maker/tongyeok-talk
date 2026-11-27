@@ -111,15 +111,14 @@ class _AppUpdateScreenState extends State<AppUpdateScreen> {
                 'id': 'com.tongyeoktalk',
               })
               : Uri.https('apps.apple.com', '/kr/app/id$_appleId');
-      final store =
+      final opened =
           widget.android
-              ? Uri(
-                scheme: 'market',
-                host: 'details',
-                queryParameters: {'id': 'com.tongyeoktalk'},
-              )
-              : page.replace(scheme: 'itms-apps');
-      if (!await launchUrl(store, mode: LaunchMode.externalApplication) &&
+              ? await _channel.invokeMethod<bool>('openStore') == true
+              : await launchUrl(
+                page.replace(scheme: 'itms-apps'),
+                mode: LaunchMode.externalApplication,
+              );
+      if (!opened &&
           !await launchUrl(page, mode: LaunchMode.externalApplication)) {
         throw StateError('Store unavailable');
       }
