@@ -151,7 +151,12 @@ class _RecentConversationsScreenState extends State<RecentConversationsScreen>
 
   Widget _watchAdsButton() => FilledButton.icon(
     icon: const Icon(Icons.play_arrow_rounded, size: 18),
-    label: Text(tr(context, 'watchAds'), textAlign: TextAlign.center),
+    label: LanguageScope.of(context).displayCode == 'ko'
+        ? FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(tr(context, 'watchAds'), maxLines: 1, softWrap: false),
+          )
+        : Text(tr(context, 'watchAds'), textAlign: TextAlign.center),
     style: FilledButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       minimumSize: const Size(0, 44),
