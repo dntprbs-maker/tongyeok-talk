@@ -9,7 +9,7 @@ const _publishedHost = 'tongyeok-talk-lab-20261024.web.app';
 String get mobileTongyeokHost =>
     kDebugMode &&
         defaultTargetPlatform == TargetPlatform.android &&
-        RegExp(r'^tongyeok-talk-lab-20261024--android2009-[a-z0-9]+\.web\.app$')
+        RegExp(r'^tongyeok-talk-lab-20261024--android(?:2009|2010)-[a-z0-9]+\.web\.app$')
             .hasMatch(_androidPreviewHost)
     ? _androidPreviewHost
     : _publishedHost;

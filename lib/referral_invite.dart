@@ -25,11 +25,14 @@ String? guestSmsMessage(String link) {
 }
 
 Uri friendReferralLink(String code, String language, {String? platform}) =>
-    Uri.https('tongyeok-talk-lab-20261024.web.app', '/i', {
-      'r': code,
-      'l': language,
-      if (platform != null) 'p': platform,
-    });
+    Uri.https(
+      const String.fromEnvironment(
+        'TONGYEOK_REFERRAL_INVITE_HOST',
+        defaultValue: 'tongyeok-talk-lab-20261024.web.app',
+      ),
+      '/i',
+      {'r': code, 'l': language, if (platform != null) 'p': platform},
+    );
 
 String referralMessage(String code, {String? language}) {
   if (language != null) {
