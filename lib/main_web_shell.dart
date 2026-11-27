@@ -524,6 +524,28 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       body: SafeArea(
         child: Column(
           children: [
+            FutureBuilder<List<String>?>(
+              future: _installedVersion,
+              builder: (context, snapshot) {
+                final build = snapshot.data?.last;
+                if (build == null || build.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 4,
+                    horizontal: 16,
+                  ),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Text(
+                      mongolian ? 'Хувилбар $build' : '빌드 $build',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
+                  ),
+                );
+              },
+            ),
             Expanded(
               child: Stack(
                 children: [
