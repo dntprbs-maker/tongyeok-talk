@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,10 +26,11 @@ class TranslationWallet extends StatefulWidget {
 }
 
 class _TranslationWalletState extends State<TranslationWallet> {
-  late final _wallet = FirebaseFirestore.instance
-      .collection('translationWallets')
-      .doc(FirebaseAuth.instance.currentUser!.uid)
-      .snapshots();
+  late final _wallet =
+      FirebaseFirestore.instance
+          .collection('translationWallets')
+          .doc(FirebaseAuth.instance.currentUser!.uid)
+          .snapshots();
   @override
   Widget build(
     BuildContext context,
@@ -75,9 +77,10 @@ class _TranslationWalletState extends State<TranslationWallet> {
                     fontSize: 28,
                     height: 1.05,
                     fontWeight: FontWeight.w800,
-                    color: available <= creditUrgentThreshold
-                        ? Colors.red.shade700
-                        : const Color(0xFF101A3D),
+                    color:
+                        available <= creditUrgentThreshold
+                            ? Colors.red.shade700
+                            : const Color(0xFF101A3D),
                   ),
                 ),
               ),
@@ -90,9 +93,10 @@ class _TranslationWalletState extends State<TranslationWallet> {
             '${tr(context, 'translationCredits')}: $formattedBalance${available <= creditWarningThreshold ? ' · ${tr(context, creditWarningKey(available))}' : ''}',
             style: TextStyle(
               fontSize: 12,
-              color: available <= creditUrgentThreshold
-                  ? Colors.red.shade700
-                  : Colors.black87,
+              color:
+                  available <= creditUrgentThreshold
+                      ? Colors.red.shade700
+                      : Colors.black87,
             ),
           ),
         );
@@ -104,14 +108,14 @@ class _TranslationWalletState extends State<TranslationWallet> {
         subtitle: Text(
           '${tr(context, snapshot.data!.exists ? creditWarningKey(available) : 'creditNotActive')}${reserved > 0 ? '\n${tr(context, 'creditReserved')}' : ''}',
           style: TextStyle(
-            color: available <= creditUrgentThreshold
-                ? Colors.red.shade700
-                : available <= creditWarningThreshold
-                ? Colors.orange.shade900
-                : null,
-            fontWeight: available <= creditWarningThreshold
-                ? FontWeight.w600
-                : null,
+            color:
+                available <= creditUrgentThreshold
+                    ? Colors.red.shade700
+                    : available <= creditWarningThreshold
+                    ? Colors.orange.shade900
+                    : null,
+            fontWeight:
+                available <= creditWarningThreshold ? FontWeight.w600 : null,
           ),
         ),
       );
@@ -231,11 +235,10 @@ class _HomePassSummaryState extends State<HomePassSummary>
           '${tr(context, 'passDaysLeft', {'days': '$days'})}';
     }
 
-    final titleStyle =
-        (theme.textTheme.headlineSmall ??
-                theme.textTheme.titleLarge ??
-                const TextStyle())
-            .copyWith(fontSize: 20, fontWeight: FontWeight.w800);
+    final titleStyle = (theme.textTheme.headlineSmall ??
+            theme.textTheme.titleLarge ??
+            const TextStyle())
+        .copyWith(fontSize: 20, fontWeight: FontWeight.w800);
 
     final dateStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
       fontSize: 13,
@@ -247,12 +250,7 @@ class _HomePassSummaryState extends State<HomePassSummary>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          textAlign: TextAlign.left,
-          softWrap: true,
-          style: titleStyle,
-        ),
+        _PassHeadline(title: title, days: days, style: titleStyle),
         if (days > 0 && last != null) ...[
           const SizedBox(height: 2),
           Text(
@@ -267,6 +265,68 @@ class _HomePassSummaryState extends State<HomePassSummary>
           ),
         ],
       ],
+    );
+  }
+}
+
+class _PassHeadline extends StatelessWidget {
+  const _PassHeadline({
+    required this.title,
+    required this.days,
+    required this.style,
+  });
+
+  final String title;
+  final int days;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double fontSize =
+            (constraints.maxWidth * 0.12).clamp(20.0, 28.0).toDouble();
+        final TextStyle scaledStyle = style.copyWith(
+          fontSize: fontSize,
+          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+        );
+        final digits = days.toString();
+        final start = days > 1 ? title.indexOf(digits) : -1;
+        Text part(String value) =>
+            Text(value, style: scaledStyle, softWrap: false, maxLines: 1);
+        final line =
+            start < 0
+                ? part(title)
+                : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    part(title.substring(0, start)),
+                    Stack(
+                      alignment: Alignment.centerRight,
+                      children: [
+                        // Reserve three tabular digits at the current text scale.
+                        Opacity(opacity: 0, child: part('888')),
+                        part(digits),
+                      ],
+                    ),
+                    part(title.substring(start + digits.length)),
+                  ],
+                );
+
+        return Semantics(
+          label: title,
+          excludeSemantics: true,
+          child: SizedBox(
+            width: constraints.maxWidth,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: line,
+            ),
+          ),
+        );
+      },
     );
   }
 }
