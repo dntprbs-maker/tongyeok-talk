@@ -5,12 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Widget wrapKorean(Widget child) {
+Widget wrapKorean(Widget child, {double width = 180}) {
   return LanguageScope(
     child: MaterialApp(
-      home: Scaffold(
-        body: Center(child: SizedBox(width: 180, child: child)),
-      ),
+      home: Scaffold(body: Center(child: SizedBox(width: width, child: child))),
     ),
   );
 }
@@ -66,7 +64,7 @@ void main() {
         await tester.pumpWidget(
           wrapKorean(HomePassSummary(expiry: expiry, now: now)),
         );
-        expect(find.textContaining('365 өдөр'), findsOneWidget);
+        expect(find.bySemanticsLabel(RegExp('365 өдөр')), findsOneWidget);
         expect(find.textContaining('2027 оны 11-р сарын 27'), findsOneWidget);
         expect(language.code, 'ko');
         expect(tester.takeException(), isNull);
@@ -81,10 +79,56 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('이용 기간'), findsWidgets);
-      expect(find.textContaining('365일 남음'), findsWidgets);
+      final title = find.text('365');
+      expect(title, findsOneWidget);
+      expect(
+        find.ancestor(of: title, matching: find.byType(FittedBox)),
+        findsOneWidget,
+      );
       expect(find.textContaining('2027년 11월 27일까지'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
+
+    for (final width in [120.0, 160.0, 240.0, 400.0]) {
+      testWidgets('keeps the day suffix aligned at width $width', (
+        tester,
+      ) async {
+        final anchor = DateTime.utc(2026, 11, 27, 15);
+        double? suffixLeft;
+        double? prefixLeft;
+        for (final count in [365, 23, 7, 1234]) {
+          await tester.pumpWidget(
+            wrapKorean(
+              HomePassSummary(
+                now: anchor,
+                expiry: anchor.add(Duration(days: count)),
+              ),
+              width: width,
+            ),
+          );
+          final prefix = find.textContaining('이용 기간');
+          final suffix = find.text('일 남음');
+          final number = find.text('$count');
+          final prefixRect = tester.getRect(prefix);
+          final suffixRect = tester.getRect(suffix);
+          final numberRect = tester.getRect(number);
+          final bounds = tester.getRect(find.byType(HomePassSummary));
+          expect(prefixRect.left, greaterThanOrEqualTo(bounds.left - 0.1));
+          expect(suffixRect.right, lessThanOrEqualTo(bounds.right + 0.1));
+          expect(numberRect.center.dy, closeTo(suffixRect.center.dy, 0.1));
+          expect(prefixRect.center.dy, closeTo(suffixRect.center.dy, 0.1));
+          expect(numberRect.right, closeTo(suffixRect.left, 0.1));
+          if (count < 1000) {
+            suffixLeft ??= suffixRect.left;
+            prefixLeft ??= prefixRect.left;
+            expect(suffixRect.left, closeTo(suffixLeft, 0.1));
+            expect(prefixRect.left, closeTo(prefixLeft, 0.1));
+          }
+          expect(find.bySemanticsLabel('이용 기간 ${count}일 남음'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        }
+      });
+    }
 
     testWidgets('shows today label when the pass ends today', (tester) async {
       final todayExpiry = DateTime.utc(2026, 11, 27, 20, 0);
