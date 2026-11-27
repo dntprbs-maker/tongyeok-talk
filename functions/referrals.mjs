@@ -7,6 +7,7 @@ const roleOf = profile => profile?.deleted ? undefined : rewardRole(profile);
 const timestamp = value => value?.toMillis?.() ?? 0;
 const contactFor = (db, uid) => db.doc(`users/${uid}/private/contact`);
 const referralFor = (db, uid) => db.doc(`_referrals/${uid}`);
+const newReferralWaitDays = 0;
 
 export async function referralStatus(db, uid) {
   const profile = (await db.doc(`users/${uid}`).get()).data();
@@ -25,6 +26,7 @@ export async function referralStatus(db, uid) {
   const rows = await db.collection('_referrals').where('inviter', '==', uid).get();
   return {
     code,
+    waitDays: newReferralWaitDays,
     pending: rows.docs.filter(doc => !doc.data().grantedAt).length,
     rewarded: rows.docs.filter(doc => doc.data().grantedAt).length,
   };
@@ -50,7 +52,7 @@ export async function registerReferral(db, uid, input) {
     if (!inviterContact.exists || !inviterRole || !inviteeRole || inviterRole === inviteeRole) {
       throw Error('referral_role_mismatch');
     }
-    tx.create(ref, {inviter, inviterRole, inviteeRole, activityDays:[]});
+    tx.create(ref, {inviter, inviterRole, inviteeRole, activityDays:[], waitDays:newReferralWaitDays});
     return {registered:true};
   });
 }
@@ -67,7 +69,10 @@ export async function recordReferralActivity(db, uid, at) {
     if (referral.activityDays.includes(day)) return;
     const activityDays = [...referral.activityDays, day];
     const patch = {activityDays};
-    if (activityDays.length === 10) patch.nextCheckAt = new Date(joined + 30 * dayMs);
+    if (activityDays.length === 10) {
+      const waitDays = referral.waitDays ?? 30;
+      patch.nextCheckAt = new Date(Math.max(at, joined + waitDays * dayMs));
+    }
     tx.update(ref, patch);
   });
 }
