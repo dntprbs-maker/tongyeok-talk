@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'app_update_screen.dart';
 import 'ios_reward_ad_probe.dart';
 import 'mobile_web_navigation.dart';
 import 'native_push_bridge_device.dart';
@@ -22,6 +23,7 @@ import 'native_reward_bridge_script.dart';
 import 'native_social_login_bridge.dart';
 import 'native_social_login_device.dart';
 import 'native_contact_names.dart';
+import 'referral_invite.dart';
 
 void main() => runApp(
   const MaterialApp(
@@ -39,7 +41,6 @@ class TongyeokWebShell extends StatefulWidget {
 }
 
 class _TongyeokWebShellState extends State<TongyeokWebShell> {
-  static const _buildNumber = String.fromEnvironment('TONGYEOK_BUILD_NUMBER');
   // Keep disabled until the Apple push profile/key and device tests are ready.
   static const _nativePushEnabled = bool.fromEnvironment(
     'TONGYEOK_IOS_NATIVE_PUSH',
@@ -59,9 +60,12 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       socialLocalPreview
           ? Uri.parse('http://127.0.0.1:8768/')
           : _socialEnabled
-          ? Uri.https('tongyeok-talk-lab-20261024.web.app', '/mobile/')
+          ? Uri.https(mobileTongyeokHost, '/mobile/')
           : Uri.https('dntprbs-maker.github.io', '/tongyeok-talk/');
   late final WebViewController _controller;
+  late final Future<List<String>?> _installedVersion = readInstalledVersion(_android);
+  bool _updateOpen = false;
+  bool _inviteOpen = false;
   bool _loading = true;
   bool _failed = false;
   final _pushDevice = NativePushBridgeDevice();
@@ -87,7 +91,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
   bool _isContactsPage(String? url) {
     final uri = Uri.tryParse(url ?? '');
     return uri != null && isTrustedTongyeokPage(uri) &&
-        (uri.host == 'tongyeok-talk-lab-20261024.web.app' || socialLocalPreview);
+        (isTongyeokMobilePage(uri) || socialLocalPreview);
   }
   @override
   void initState() {
@@ -132,6 +136,14 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                   .whenComplete(() => _queuedPushRequests--);
             },
           )
+          ..addJavaScriptChannel(
+            'TongyeokAppUpdate',
+            onMessageReceived: (message) => _openUpdate(message.message),
+          )
+          ..addJavaScriptChannel(
+            'TongyeokReferralSms',
+            onMessageReceived: (message) => _composeReferralSms(message.message),
+          )
           ..setNavigationDelegate(
             NavigationDelegate(
               onNavigationRequest: (request) {
@@ -152,6 +164,7 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                 }
               },
               onPageFinished: (url) async {
+                final nonce = _pageNonce;
                 final trusted = isTrustedTongyeokPage(Uri.parse(url));
                 if (_canUseContacts && _isContactsPage(url)) {
                   await _controller.runJavaScript(nativeContactNamesScript(_pageNonce));
@@ -175,7 +188,55 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                     nativePushBridgeScript(_pageNonce),
                   );
                 }
+                if ((_ios || _android) && trusted && nonce == _pageNonce) {
+                  await _controller.runJavaScript('''
+                    if (window === window.top) {
+                      let nextId = 0;
+                      const pending = new Map();
+                      const compose = (details) =>
+                        new Promise(resolve => {
+                          const id = ++nextId;
+                          const timer = setTimeout(() => {
+                            pending.delete(id);
+                            resolve(false);
+                          }, 15000);
+                          pending.set(id, ok => {
+                            clearTimeout(timer);
+                            resolve(ok === true);
+                          });
+                          window.TongyeokReferralSms.postMessage(JSON.stringify({
+                            id, ...details, nonce: ${jsonEncode(nonce)}
+                          }));
+                        });
+                      window.tongyeokComposeReferralSms =
+                        (phone, code) => compose({phone, code});
+                      if (${_android}) {
+                        window.tongyeokComposeGuestSms = guestLink => compose({guestLink});
+                      }
+                      window.tongyeokReferralSmsResult = (nonce, id, ok) => {
+                        if (nonce !== ${jsonEncode(nonce)}) return;
+                        const finish = pending.get(id);
+                        pending.delete(id);
+                        if (finish) finish(ok);
+                      };
+                    }
+                  ''');
+                }
                 if (mounted) setState(() => _loading = false);
+                final installed = await _installedVersion;
+                if (!mounted || installed == null || nonce != _pageNonce ||
+                    !isAppUpdatePage(Uri.tryParse(await _controller.currentUrl() ?? '')) ||
+                    nonce != _pageNonce) {
+                  return;
+                }
+                await _controller.runJavaScript("""
+                  if (window === window.top) {
+                    window.tongyeokInstalledVersion = ${jsonEncode(installed)};
+                    window.tongyeokOpenAppUpdate = (mn) =>
+                      window.TongyeokAppUpdate.postMessage(${jsonEncode(nonce)} + (mn ? ':mn' : ':ko'));
+                    window.dispatchEvent(new Event('tongyeok-app-update-ready'));
+                  }
+                """);
               },
               onWebResourceError: (error) {
                 if (mounted && error.isForMainFrame == true) {
@@ -188,6 +249,84 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
             ),
           );
     _openPublishedApp();
+  }
+
+  Future<void> _composeReferralSms(String message) async {
+    if (!mounted || (!_ios && !_android) || message.length > 512) return;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(message);
+    } on FormatException {
+      return;
+    }
+    if (decoded is! Map<String, dynamic>) return;
+    final nonce = _pageNonce;
+    final id = decoded['id'];
+    final phone = decoded['phone'];
+    final code = decoded['code'];
+    final guestLink = decoded['guestLink'];
+    if (nonce.isEmpty || decoded['nonce'] != nonce || id is! int || id < 1) return;
+    final String? body;
+    final String recipient;
+    if (_android && guestLink is String && phone == null && code == null) {
+      body = guestSmsMessage(guestLink);
+      recipient = '';
+    } else if (guestLink == null && phone is String && isReferralPhone(phone) &&
+        code is String && isReferralCode(code)) {
+      body = referralMessage(code);
+      recipient = phone;
+    } else {
+      return;
+    }
+    if (body == null) return;
+    final page = Uri.tryParse(await _controller.currentUrl() ?? '');
+    if (!mounted || nonce != _pageNonce || page == null || !isTrustedTongyeokPage(page)) return;
+    var opened = false;
+    if (!_inviteOpen) {
+      _inviteOpen = true;
+      try {
+        await const MethodChannel('tongyeok/invite').invokeMethod<void>(
+          'composeSms', {'phone': recipient, 'body': body},
+        );
+        opened = true;
+      } on PlatformException {
+        opened = false;
+      } on MissingPluginException {
+        opened = false;
+      } finally {
+        _inviteOpen = false;
+      }
+    }
+    if (!mounted || nonce != _pageNonce) return;
+    await _controller.runJavaScript(
+      'window.tongyeokReferralSmsResult?.(${jsonEncode(nonce)}, $id, $opened)',
+    );
+  }
+
+  Future<void> _openUpdate(String message) async {
+    final nonce = _pageNonce;
+    if (!mounted || _updateOpen || nonce.isEmpty ||
+        (message != '$nonce:ko' && message != '$nonce:mn')) {
+      return;
+    }
+    if (!isAppUpdatePage(Uri.tryParse(await _controller.currentUrl() ?? '')) ||
+        !mounted || nonce != _pageNonce || _updateOpen) {
+      return;
+    }
+    final installed = await _installedVersion;
+    if (!mounted || installed == null || nonce != _pageNonce || _updateOpen) return;
+    _updateOpen = true;
+    try {
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => AppUpdateScreen(
+          android: _android,
+          mongolian: message.endsWith(':mn'),
+          installed: installed,
+        ),
+      ));
+    } finally {
+      _updateOpen = false;
+    }
   }
 
   Future<void> _handleContactNames(String raw, String nonce) async {
@@ -400,20 +539,25 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_buildNumber.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 4,
-                  horizontal: 16,
-                ),
-                child: Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: Text(
-                    mongolian ? 'Хувилбар $_buildNumber' : '빌드 $_buildNumber',
-                    style: Theme.of(context).textTheme.labelSmall,
+            FutureBuilder<List<String>?>(
+              future: _installedVersion,
+              builder: (context, snapshot) {
+                final build = snapshot.data?.last;
+                if (build == null || build.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Text(
+                      mongolian ? 'Хувилбар $build' : '빌드 $build',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
+            ),
             Expanded(
               child: Stack(
                 children: [

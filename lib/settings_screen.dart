@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'referral_screen.dart';
 import 'app_language.dart';
+import 'app_update_tile_stub.dart'
+    if (dart.library.js_interop) 'app_update_tile_web.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -358,6 +360,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               tr(context, 'deletionTitle'),
               _busy ? null : () => _showPage(const AccountDeletionScreen()),
             ),
+            const AppUpdateTile(),
             if (_error != null && _error != 'pushFailed')
               Text(
                 tr(context, _error!),

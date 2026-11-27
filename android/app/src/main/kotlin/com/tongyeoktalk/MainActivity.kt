@@ -2,14 +2,18 @@ package com.tongyeoktalk
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import com.google.android.gms.ads.AdRequest
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.model.UpdateAvailability
 
 class MainActivity : FlutterActivity() {
     private var contacts: ContactsBridge? = null
@@ -18,6 +22,65 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         contacts?.close()
         contacts = ContactsBridge(this, flutterEngine.dartExecutor.binaryMessenger)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/invite")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "composeSms") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val phone = call.argument<String>("phone")
+                val body = call.argument<String>("body")
+                if (phone == null ||
+                    (phone.isNotEmpty() && !Regex("\\+?[0-9]{8,15}").matches(phone)) ||
+                    body.isNullOrBlank()) {
+                    result.error("invalid_invitation", null, null)
+                    return@setMethodCallHandler
+                }
+                val intent = Intent(Intent.ACTION_SENDTO, Uri.fromParts("smsto", phone, null))
+                    .putExtra("sms_body", body)
+                try {
+                    startActivity(intent)
+                    result.success(null)
+                } catch (_: ActivityNotFoundException) {
+                    result.error("unavailable", null, null)
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/app_update")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installed" -> {
+                        @Suppress("DEPRECATION")
+                        val info = packageManager.getPackageInfo(packageName, 0)
+                        @Suppress("DEPRECATION")
+                        val build = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                        result.success(listOf(info.versionName, build.toString()))
+                    }
+                    "openStore" -> {
+                        val intent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("market://details?id=com.tongyeoktalk"),
+                        ).setPackage("com.android.vending")
+                        try {
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: ActivityNotFoundException) {
+                            result.success(false)
+                        }
+                    }
+                    "check" -> AppUpdateManagerFactory.create(this).appUpdateInfo
+                        .addOnSuccessListener { info ->
+                            when (info.updateAvailability()) {
+                                UpdateAvailability.UPDATE_AVAILABLE,
+                                UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS ->
+                                    result.success(info.availableVersionCode().toString())
+                                UpdateAvailability.UPDATE_NOT_AVAILABLE -> result.success(null)
+                                else -> result.error("unavailable", null, null)
+                            }
+                        }
+                        .addOnFailureListener { result.error("unavailable", null, null) }
+                    else -> result.notImplemented()
+                }
+            }
         if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "tongyeok/ad_test_device")
             .setMethodCallHandler { call, result ->
