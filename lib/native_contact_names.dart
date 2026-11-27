@@ -17,7 +17,8 @@ class NativeContactNames {
       case 'enable':
         return _channel.invokeMethod<bool>(operation as String);
       case 'pick':
-        return _channel.invokeMethod<String>('pick');
+      case 'pickPhone':
+        return _channel.invokeMethod<String>(operation as String);
       case 'lookup':
         if (await _channel.invokeMethod<bool>('status') != true) return {};
         final token = request['token'];
@@ -55,7 +56,8 @@ class NativeContactNames {
   }
 }
 
-String nativeContactNamesScript(String nonce) => '''
+String nativeContactNamesScript(String nonce) =>
+    '''
 (() => {
   if (window.top !== window) return;
   const nonce = ${jsonEncode(nonce)};
@@ -67,7 +69,7 @@ String nativeContactNamesScript(String nonce) => '''
     const timer = setTimeout(() => {
       pending.delete(id);
       resolve(null);
-    }, request.op === 'pick' || request.op === 'enable' ? 120000 : 15000);
+    }, ['pick', 'pickPhone', 'enable'].includes(request.op) ? 120000 : 15000);
     pending.set(id, value => { clearTimeout(timer); resolve(value); });
     TongyeokNativeContactNames.postMessage(JSON.stringify({...request, nonce, id}));
   });

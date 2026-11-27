@@ -210,6 +210,8 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
                         });
                       window.tongyeokComposeReferralSms =
                         (phone, code) => compose({phone, code});
+                      window.tongyeokComposeLocalizedReferralSms =
+                        (phone, code, language) => compose({phone, code, language});
                       if (${_android}) {
                         window.tongyeokComposeGuestSms = guestLink => compose({guestLink});
                       }
@@ -264,16 +266,18 @@ class _TongyeokWebShellState extends State<TongyeokWebShell> {
     final id = decoded['id'];
     final phone = decoded['phone'];
     final code = decoded['code'];
+    final language = decoded['language'];
+    if (language != null && language != 'ko' && language != 'mn') return;
     final guestLink = decoded['guestLink'];
     if (nonce.isEmpty || decoded['nonce'] != nonce || id is! int || id < 1) return;
     final String? body;
     final String recipient;
-    if (_android && guestLink is String && phone == null && code == null) {
+    if (_android && guestLink is String && phone == null && code == null && language == null) {
       body = guestSmsMessage(guestLink);
       recipient = '';
     } else if (guestLink == null && phone is String && isReferralPhone(phone) &&
         code is String && isReferralCode(code)) {
-      body = referralMessage(code);
+      body = referralMessage(code, language: language as String?);
       recipient = phone;
     } else {
       return;
