@@ -623,6 +623,13 @@ const Map<String, List<String>> messages = {
   ],
   'adPassDay': ['{month}월 {day}일까지', '{month}/{day} хүртэл'],
   'adPassDeadline': ['이용 기한', 'Ашиглах хугацаа'],
+  'passPeriod': ['이용 기간', 'Ашиглах хугацаа'],
+  'passDaysLeft': ['{days}일 남음', '{days} өдөр үлдлээ'],
+  'passUntilToday': ['오늘까지', 'Өнөөдрийг хүртэл'],
+  'passUntilFullDate': [
+    '{year}년 {month}월 {day}일까지',
+    '{year} оны {month}-р сарын {day} хүртэл',
+  ],
   'adPassUntil': [
     '{month}월 {day}일 {hour}시 {minute}분까지\n(한국시간)',
     '{month}/{day} {hour}:{minute} хүртэл\n(Солонгосын цагаар)',

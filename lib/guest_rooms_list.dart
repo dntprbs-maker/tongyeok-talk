@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'guest_chat_screen.dart';
 import 'app_language.dart';
 import 'chat_kind.dart';
+import 'conversation_row_card.dart';
 import 'local_archive.dart';
 
 Future<void> syncGuestArchive(String id) async {
@@ -110,21 +111,27 @@ class _GuestRoomsListState extends State<GuestRoomsList> {
               style: const TextStyle(color: Colors.red),
             ),
           for (final doc in rooms)
-            ListTile(
-              leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE2F2ED),
-                child: Icon(Icons.person_outline, color: guestChatColor),
-              ),
-              title: Text(doc.data()['guestName'] as String),
-              subtitle: const ChatKindBadge(guest: true),
-              trailing: const Icon(Icons.chevron_right, color: guestChatColor),
-              onTap:
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => GuestMemberChat(id: doc.id),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ChatRowCard(
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => GuestMemberChat(id: doc.id),
+                      ),
                     ),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const ChatBubbleAvatar(),
+                  title: Text(doc.data()['guestName'] as String),
+                  subtitle: const ChatKindBadge(guest: true),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: guestChatColor,
                   ),
+                ),
+              ),
             ),
         ],
       );
