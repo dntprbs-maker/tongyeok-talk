@@ -19,25 +19,27 @@ function fakeReferral(waitDays) {
   return {db, referral};
 }
 
-test('new referrals are due on the tenth distinct day of messaging', async () => {
-  const {db, referral} = fakeReferral(0);
-  for (let i = 0; i < 9; i++) {
-    await recordReferralActivity(db, 'invitee', joined + day * i);
-    await recordReferralActivity(db, 'invitee', joined + day * i + 1000);
-  }
-  assert.equal(referral.activityDays.length, 9);
-  assert.equal(referral.nextCheckAt, undefined);
-  await recordReferralActivity(db, 'invitee', joined + day * 9);
-  assert.equal(referral.nextCheckAt.getTime(), joined + day * 9);
-  await recordReferralActivity(db, 'invitee', joined + day * 10);
-  assert.equal(referral.activityDays.length, 10);
-  assert.equal(referral.nextCheckAt.getTime(), joined + day * 9);
-});
-
-test('previously registered referrals retain their original waiting period', async () => {
-  const {db, referral} = fakeReferral();
-  for (let i = 0; i < 10; i++) {
-    await recordReferralActivity(db, 'invitee', joined + day * i);
-  }
-  assert.equal(referral.nextCheckAt.getTime(), joined + day * 30);
-});
+for (const [label, waitDays] of [
+  ['new referrals', 0],
+  ['references with an explicit 30-day waiting period', 30],
+  ['references with a missing waiting period', undefined],
+]) {
+  test(`${label} earn on the tenth distinct day of messaging`, async () => {
+    const {db, referral} = fakeReferral(waitDays);
+    for (let i = 0; i < 9; i++) {
+      await recordReferralActivity(db, 'invitee', joined + day * i);
+      await recordReferralActivity(db, 'invitee', joined + day * i + 1000);
+    }
+    assert.equal(referral.activityDays.length, 9);
+    assert.equal(referral.nextCheckAt, undefined);
+    await recordReferralActivity(db, 'invitee', joined + day * 9);
+    assert.equal(referral.activityDays.length, 10);
+    assert.equal(referral.nextCheckAt.getTime(), joined + day * 9);
+    await recordReferralActivity(db, 'invitee', joined + day * 9 + 1000);
+    assert.equal(referral.activityDays.length, 10);
+    assert.equal(referral.nextCheckAt.getTime(), joined + day * 9);
+    await recordReferralActivity(db, 'invitee', joined + day * 10);
+    assert.equal(referral.activityDays.length, 10);
+    assert.equal(referral.nextCheckAt.getTime(), joined + day * 9);
+  });
+}
