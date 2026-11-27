@@ -5,7 +5,10 @@
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Local reward verification through adb reverse; release keeps HTTPS only. -->
-    <application android:usesCleartextTraffic="true">
+    <application android:usesCleartextTraffic="true"
+        android:label="통역톡 개발판"
+        android:icon="@mipmap/ic_launcher_development"
+        tools:replace="android:label,android:icon">
         <!-- Google's official sample application for developer test ads only. -->
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713" tools:replace="android:value"/>
